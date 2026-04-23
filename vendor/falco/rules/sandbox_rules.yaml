@@ -1,0 +1,113 @@
+# =============================================================================
+# Advanced Cybersecurity Sandbox Platform
+# Custom Falco Rules for Sandbox Runtime Security
+# =============================================================================
+# These rules detect suspicious behavior within sandbox analysis containers.
+# Deploy alongside standard Falco rules for defense-in-depth monitoring.
+#
+# Priority Levels: EMERGENCY > ALERT > CRITICAL > ERROR > WARNING > NOTICE > INFO > DEBUG
+
+- rule: Sandbox Container Escape Attempt
+  desc: >
+    Detects attempts to escape sandbox container via namespace manipulation,
+    chroot pivoting, or other containment bypass techniques.
+  condition: >
+    container.id != host
+    and container.name startswith "sandbox-"
+    and evt.type in (setns, unshare, pivot_root, chroot)
+  output: >
+    CRITICAL: Container escape attempt detected
+    (user=%user.name command=%proc.cmdline container=%container.name
+     syscall=%evt.type pid=%proc.pid)
+  priority: CRITICAL
+  tags: [sandbox, container_escape, mitre_T1611]
+
+- rule: Sandbox Unauthorized Network Egress
+  desc: >
+    Detects outbound network connections from sandbox containers to
+    non-whitelisted IP addresses. Sandbox containers should only
+    communicate with the orchestrator API.
+  condition: >
+    container.name startswith "sandbox-"
+    and evt.type = connect
+    and fd.typechar = 4
+    and not fd.sip in (127.0.0.1, 172.28.0.0/16)
+  output: >
+    WARNING: Unauthorized network egress from sandbox
+    (container=%container.name dest=%fd.sip:%fd.sport proc=%proc.name
+     pid=%proc.pid user=%user.name)
+  priority: WARNING
+  tags: [sandbox, network_egress, mitre_T1048]
+
+- rule: Sandbox Privilege Escalation
+  desc: >
+    Detects privilege escalation attempts within sandbox containers
+    via setuid/setgid syscalls or capability manipulation.
+  condition: >
+    container.name startswith "sandbox-"
+    and evt.type in (setuid, setgid, setreuid, setregid, setresuid, setresgid)
+    and user.name != root
+  output: >
+    CRITICAL: Privilege escalation in sandbox
+    (user=%user.name command=%proc.cmdline container=%container.name
+     syscall=%evt.type target_uid=%evt.arg.uid)
+  priority: CRITICAL
+  tags: [sandbox, privilege_escalation, mitre_T1068]
+
+- rule: Sandbox Sensitive File Access
+  desc: >
+    Detects reads of sensitive host paths from sandbox containers,
+    including /etc/shadow, /proc namespace files, and Docker socket.
+  condition: >
+    container.name startswith "sandbox-"
+    and (evt.type in (open, openat))
+    and fd.name in (/etc/shadow, /etc/passwd, /proc/1/ns/mnt,
+                     /proc/1/ns/pid, /var/run/docker.sock,
+                     /run/containerd/containerd.sock)
+  output: >
+    ALERT: Sensitive file access from sandbox
+    (file=%fd.name container=%container.name proc=%proc.name
+     pid=%proc.pid user=%user.name)
+  priority: ALERT
+  tags: [sandbox, sensitive_file, mitre_T1005]
+
+- rule: Sandbox Process Injection via ptrace
+  desc: >
+    Detects ptrace ATTACH from sandbox containers, indicating
+    process injection or debugging attempts.
+  condition: >
+    container.name startswith "sandbox-"
+    and evt.type = ptrace
+    and evt.arg.request = PTRACE_ATTACH
+  output: >
+    CRITICAL: Process injection via ptrace in sandbox
+    (container=%container.name target_pid=%evt.arg.pid
+     proc=%proc.name user=%user.name)
+  priority: CRITICAL
+  tags: [sandbox, process_injection, mitre_T1055]
+
+- rule: Sandbox Kernel Module Load
+  desc: >
+    Detects attempts to load kernel modules from sandbox containers.
+  condition: >
+    container.name startswith "sandbox-"
+    and evt.type in (init_module, finit_module)
+  output: >
+    EMERGENCY: Kernel module load attempt from sandbox
+    (container=%container.name proc=%proc.name pid=%proc.pid)
+  priority: EMERGENCY
+  tags: [sandbox, kernel_module, mitre_T1547]
+
+- rule: Sandbox Crypto Mining Detection
+  desc: >
+    Detects common crypto mining indicators within sandbox containers,
+    such as connections to known mining pool ports.
+  condition: >
+    container.name startswith "sandbox-"
+    and evt.type = connect
+    and fd.sport in (3333, 5555, 7777, 9999, 14444, 45700)
+  output: >
+    WARNING: Possible crypto mining activity in sandbox
+    (container=%container.name dest=%fd.sip:%fd.sport proc=%proc.name)
+  priority: WARNING
+  tags: [sandbox, crypto_mining, mitre_T1496]

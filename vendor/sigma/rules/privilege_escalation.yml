@@ -1,0 +1,23 @@
+title: Privilege Escalation Attempt
+id: sandbox-005
+status: stable
+level: high
+description: Detects token manipulation for privilege escalation
+author: Sandbox Platform
+date: 2024/01/15
+modified: 2024/01/15
+tags:
+    - attack.privilege_escalation
+    - attack.t1134
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        api_calls|contains:
+            - AdjustTokenPrivileges
+            - ImpersonateLoggedOnUser
+    condition: selection
+falsepositives:
+    - Administrative tools
+    - Security software

@@ -1,0 +1,23 @@
+title: Registry Run Key Persistence
+id: sandbox-002
+status: stable
+level: high
+description: Detects creation of Run/RunOnce registry keys for persistence
+author: Sandbox Platform
+date: 2024/01/15
+modified: 2024/01/15
+tags:
+    - attack.persistence
+    - attack.t1547.001
+logsource:
+    category: registry_event
+    product: windows
+detection:
+    selection:
+        registry_path|contains:
+            - CurrentVersion\Run
+            - CurrentVersion\RunOnce
+    condition: selection
+falsepositives:
+    - Legitimate software installation
+    - User-configured startup programs

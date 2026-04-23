@@ -8,10 +8,10 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -519,6 +519,299 @@ async def get_mitre_attack_coverage(user: dict = Depends(verify_api_key)):
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM v_mitre_attack_coverage")
         return [dict(row) for row in rows]
+
+
+@app.delete("/api/v1/samples/{sample_id}")
+async def delete_sample(
+    sample_id: UUID,
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Delete a sample and all associated data.
+    Requires admin or senior_analyst role.
+    """
+    if user["role"] not in ("admin", "senior_analyst"):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions to delete samples"
+        )
+
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        # Check if sample exists
+        sample = await conn.fetchrow(
+            "SELECT id, storage_path FROM samples WHERE id = $1",
+            sample_id
+        )
+
+        if not sample:
+            raise HTTPException(status_code=404, detail="Sample not found")
+
+        # Delete sample (cascade will handle related records)
+        await conn.execute("DELETE FROM samples WHERE id = $1", sample_id)
+
+        # Delete physical file
+        storage_path = Path(sample["storage_path"])
+        if storage_path.exists():
+            storage_path.unlink()
+
+        # Log audit event
+        await conn.execute(
+            """
+            INSERT INTO audit_log (
+                user_id, action, resource_type, resource_id,
+                details, status
+            ) VALUES ($1, 'sample_deleted', 'sample', $2, $3, 'success')
+            """,
+            user["id"], sample_id, {"file_path": str(storage_path)}
+        )
+
+    logger.info(f"Sample deleted: {sample_id}")
+    return {"message": "Sample deleted successfully", "sample_id": str(sample_id)}
+
+
+@app.post("/api/v1/samples/batch")
+async def batch_submit_samples(
+    files: List[UploadFile] = File(..., description="Sample files to analyze"),
+    priority: int = Query(5, ge=1, le=10, description="Analysis priority"),
+    sandbox_type: Optional[str] = Query(None, description="Requested sandbox type"),
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Submit multiple samples for analysis in a single request.
+    Maximum 100 files per batch.
+    """
+    if len(files) > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 100 files per batch submission"
+        )
+
+    results = []
+    pool = await get_db_pool()
+
+    for file in files:
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        if file_size == 0:
+            results.append({
+                "file_name": file.filename,
+                "status": "error",
+                "message": "Empty file"
+            })
+            continue
+
+        if file_size > 100 * 1024 * 1024:
+            results.append({
+                "file_name": file.filename,
+                "status": "error",
+                "message": "File exceeds 100MB limit"
+            })
+            continue
+
+        hashes = calculate_hashes(file_content)
+
+        # Check for duplicate
+        existing = await check_duplicate_sample(hashes["sha256"])
+        if existing:
+            results.append({
+                "file_name": file.filename,
+                "sample_id": str(existing["id"]),
+                "sha256": hashes["sha256"],
+                "status": "duplicate",
+                "existing_status": existing["status"]
+            })
+            continue
+
+        # Store sample
+        storage_path = await store_sample(file_content, hashes["sha256"])
+
+        # Get file type
+        import magic
+        try:
+            mime = magic.Magic(mime=True)
+            file_type = mime.from_buffer(file_content[:2048])
+        except ImportError:
+            file_type = "application/octet-stream"
+
+        # Insert into database
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                sample_id = await conn.fetchval(
+                    """
+                    INSERT INTO samples (
+                        sha256_hash, sha1_hash, md5_hash,
+                        file_name, file_size, file_type, mime_type,
+                        submitted_by, source_type, priority,
+                        storage_path, encrypted
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    RETURNING id
+                    """,
+                    hashes["sha256"], hashes["sha1"], hashes["md5"],
+                    file.filename, file_size, file_type, file_type,
+                    user["id"], "api", priority,
+                    storage_path, bool(ENCRYPTION_KEY)
+                )
+
+                # Add to submission queue
+                await conn.execute(
+                    """
+                    INSERT INTO submission_queue (
+                        sample_id, priority, requested_sandbox_type, status
+                    ) VALUES ($1, $2, $3, 'pending')
+                    """,
+                    sample_id, priority, sandbox_type
+                )
+
+        results.append({
+            "file_name": file.filename,
+            "sample_id": str(sample_id),
+            "sha256": hashes["sha256"],
+            "status": "queued",
+            "message": "Sample submitted successfully"
+        })
+
+    logger.info(f"Batch submission: {len(files)} files, {sum(1 for r in results if r['status'] == 'queued')} queued")
+
+    return {
+        "total": len(files),
+        "queued": sum(1 for r in results if r["status"] == "queued"),
+        "duplicates": sum(1 for r in results if r["status"] == "duplicate"),
+        "errors": sum(1 for r in results if r["status"] == "error"),
+        "results": results
+    }
+
+
+@app.delete("/api/v1/queue/{queue_id}")
+async def cancel_queue_item(
+    queue_id: UUID,
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Cancel a pending or queued analysis task.
+    Only works for tasks that haven't started processing yet.
+    """
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        # Check queue item status
+        queue_item = await conn.fetchrow(
+            "SELECT id, sample_id, status FROM submission_queue WHERE id = $1",
+            queue_id
+        )
+
+        if not queue_item:
+            raise HTTPException(status_code=404, detail="Queue item not found")
+
+        if queue_item["status"] not in ("pending", "assigned"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot cancel task with status: {queue_item['status']}"
+            )
+
+        # Update queue status
+        await conn.execute(
+            """
+            UPDATE submission_queue
+            SET status = 'cancelled', completed_at = NOW()
+            WHERE id = $1
+            """,
+            queue_id
+        )
+
+        # Update sample status
+        await conn.execute(
+            "UPDATE samples SET status = 'cancelled' WHERE id = $1",
+            queue_item["sample_id"]
+        )
+
+        # Log audit event
+        await conn.execute(
+            """
+            INSERT INTO audit_log (
+                user_id, action, resource_type, resource_id,
+                details, status
+            ) VALUES ($1, 'analysis_cancelled', 'queue', $2, $3, 'success')
+            """,
+            user["id"], queue_id, {"sample_id": str(queue_item["sample_id"])}
+        )
+
+    logger.info(f"Queue item cancelled: {queue_id}")
+    return {
+        "message": "Analysis cancelled successfully",
+        "queue_id": str(queue_id)
+    }
+
+
+@app.get("/api/v1/samples")
+async def list_samples(
+    request: Request,
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    verdict_filter: Optional[str] = Query(None, description="Filter by verdict"),
+    priority_filter: Optional[int] = Query(None, description="Filter by priority"),
+    limit: int = Query(50, ge=1, le=500, description="Max results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    user: dict = Depends(verify_api_key)
+):
+    """
+    List samples with filtering and pagination.
+    """
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        query = """
+            SELECT id, sha256_hash, file_name, file_size, file_type,
+                   status, verdict, confidence_score, priority,
+                   submitted_at, analysis_completed_at
+            FROM samples
+            WHERE 1=1
+        """
+        params = []
+        param_count = 0
+
+        if status_filter:
+            param_count += 1
+            query += f" AND status = ${param_count}"
+            params.append(status_filter)
+
+        if verdict_filter:
+            param_count += 1
+            query += f" AND verdict = ${param_count}"
+            params.append(verdict_filter)
+
+        if priority_filter:
+            param_count += 1
+            query += f" AND priority = ${param_count}"
+            params.append(priority_filter)
+
+        param_count += 1
+        query += f" ORDER BY submitted_at DESC LIMIT ${param_count}"
+        params.append(limit)
+
+        param_count += 1
+        query += f" OFFSET ${param_count}"
+        params.append(offset)
+
+        rows = await conn.fetch(query, *params)
+
+        # Get total count for pagination
+        count_query = "SELECT COUNT(*) FROM samples WHERE 1=1"
+        count_params = []
+        if status_filter:
+            count_query += " AND status = $1"
+            count_params.append(status_filter)
+        if verdict_filter:
+            count_query += f" AND verdict = ${len(count_params) + 1}"
+            count_params.append(verdict_filter)
+
+        total = await conn.fetchval(count_query, *count_params)
+
+        return {
+            "samples": [dict(r) for r in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(rows) < total
+        }
 
 
 # ============================================================================

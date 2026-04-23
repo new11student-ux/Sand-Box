@@ -1,0 +1,30 @@
+title: File Dropped in Temp Directory
+id: sandbox-006
+status: stable
+level: medium
+description: Detects executable files written to temp directories
+author: Sandbox Platform
+date: 2024/01/15
+modified: 2024/01/15
+tags:
+    - attack.execution
+    - attack.t1204
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection_path:
+        file_path|contains:
+            - \Temp\
+            - \tmp\
+    selection_ext:
+        file_path|endswith:
+            - .exe
+            - .dll
+            - .scr
+            - .bat
+            - .ps1
+    condition: selection_path and selection_ext
+falsepositives:
+    - Legitimate software installers
+    - Browser downloads

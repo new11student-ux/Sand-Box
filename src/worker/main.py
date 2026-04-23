@@ -39,6 +39,9 @@ http_client: Optional[httpx.AsyncClient] = None
 # ---- Lazy-loaded integration modules ----
 _misp_client = None
 _sigma_engine = None
+_ml_classifier = None
+_ebpf_tracer = None
+_falco_monitor = None
 
 
 def get_misp_client():
@@ -59,6 +62,38 @@ def get_sigma_engine():
         count = _sigma_engine.load_rules()
         logger.info("Sigma engine loaded %d rules", count)
     return _sigma_engine
+
+
+def get_ml_classifier():
+    """Lazily initialize the ML false-positive classifier."""
+    global _ml_classifier
+    if _ml_classifier is None:
+        from src.ml.false_positive_classifier import FalsePositiveClassifier
+        _ml_classifier = FalsePositiveClassifier()
+        try:
+            _ml_classifier.load()
+            logger.info("ML classifier loaded from disk")
+        except Exception:
+            logger.info("ML classifier not trained yet — skipping ML scoring")
+    return _ml_classifier
+
+
+def get_ebpf_tracer():
+    """Lazily initialize the eBPF tracer (simulated mode)."""
+    global _ebpf_tracer
+    if _ebpf_tracer is None:
+        from src.observability.ebpf_tracer import EBPFTracer
+        _ebpf_tracer = EBPFTracer(mode="simulated")
+    return _ebpf_tracer
+
+
+def get_falco_monitor():
+    """Lazily initialize the Falco runtime security monitor."""
+    global _falco_monitor
+    if _falco_monitor is None:
+        from src.observability.falco_monitor import FalcoMonitor
+        _falco_monitor = FalcoMonitor(mode="simulated")
+    return _falco_monitor
 
 
 async def init_pool():
@@ -288,11 +323,82 @@ def _transform_capev2_to_behavior(report: dict) -> dict:
 
 
 # ============================================================================
+# ML Classifier integration
+# ============================================================================
+
+def run_ml_prediction(behavior_data: dict) -> dict:
+    """
+    Run the ML false-positive classifier on behavior data.
+    Returns prediction dict with is_malicious, confidence, top_features.
+    """
+    classifier = get_ml_classifier()
+    if not classifier.is_trained:
+        return {"ml_available": False, "ml_score": None}
+
+    try:
+        is_malicious, probability, explanation = classifier.predict(behavior_data)
+        logger.info(
+            "ML prediction: malicious=%s confidence=%.4f top_feature=%s",
+            is_malicious, probability,
+            explanation.get("top_features", [{}])[0].get("feature", "N/A"),
+        )
+        return {
+            "ml_available": True,
+            "ml_score": probability,
+            "ml_is_malicious": is_malicious,
+            "ml_top_features": explanation.get("top_features", []),
+        }
+    except Exception as e:
+        logger.warning("ML prediction failed: %s", e)
+        return {"ml_available": False, "ml_score": None}
+
+
+# ============================================================================
+# eBPF Telemetry & Falco alerts
+# ============================================================================
+
+def run_ebpf_telemetry(sample_id: str, verdict_hint: str) -> dict:
+    """
+    Generate eBPF telemetry for the analysis session.
+    In simulated mode, produces realistic syscall traces.
+    """
+    tracer = get_ebpf_tracer()
+    profile = "malicious" if verdict_hint in ("malicious", "suspicious") else "benign"
+    events = tracer.generate_trace(sample_id, behavior_profile=profile, event_count=150)
+    output_path = tracer.write_ndjson(events, filename=f"trace_{sample_id}.ndjson")
+    metrics = tracer.compute_metrics(events)
+    return {
+        "event_count": metrics.total_events,
+        "suspicious_count": metrics.suspicious_count,
+        "suspicious_sequences": len(metrics.suspicious_sequences),
+        "output_path": str(output_path),
+    }
+
+
+def run_falco_monitoring(sample_id: str, verdict_hint: str) -> dict:
+    """
+    Generate Falco security alerts for the analysis session.
+    In simulated mode, produces realistic alerts.
+    """
+    monitor = get_falco_monitor()
+    profile = "malicious" if verdict_hint in ("malicious", "suspicious") else "benign"
+    alerts = monitor.generate_alerts(sample_id, behavior_profile=profile)
+    summary = monitor.compute_summary(alerts)
+    return {
+        "total_alerts": summary.total_alerts,
+        "critical_alerts": summary.critical_alerts,
+        "escape_attempts": summary.escape_attempts,
+        "risk_score": summary.risk_score,
+        "alerts": [a.to_dict() for a in alerts],
+    }
+
+
+# ============================================================================
 # Process results & store
 # ============================================================================
 
 async def process_analysis_result(task: dict, report: dict):
-    """Process CAPEv2 report, run Sigma matching, and store in database."""
+    """Process CAPEv2 report, run Sigma + ML matching, and store in database."""
     async with db_pool.acquire() as conn:
         sample_id = task["sample_id"]
 
@@ -301,9 +407,14 @@ async def process_analysis_result(task: dict, report: dict):
         sigma_engine = get_sigma_engine()
         sigma_behaviors = sigma_engine.matches_to_behaviors(sigma_matches, str(sample_id))
 
-        # --- Determine verdict ---
+        # --- ML classification ---
+        behavior_data = _transform_capev2_to_behavior(report)
+        ml_result = run_ml_prediction(behavior_data)
+
+        # --- Determine verdict (combined Sigma + ML + CAPEv2) ---
         verdict = "unknown"
         confidence = 0.5
+        ml_score = ml_result.get("ml_score")
 
         signatures = report.get("signatures", [])
         high_sigma = sum(1 for m in sigma_matches if m.level in ("high", "critical"))
@@ -315,19 +426,30 @@ async def process_analysis_result(task: dict, report: dict):
             verdict = "suspicious"
             confidence = 0.6
         elif not signatures and not sigma_matches:
-            # No hits at all — likely benign
             verdict = "benign"
             confidence = 0.7
 
-        # Update sample with verdict
+        # ML can override or adjust confidence
+        if ml_result.get("ml_available") and ml_score is not None:
+            if ml_score > 0.8 and verdict == "benign":
+                verdict = "suspicious"
+                confidence = 0.6
+            elif ml_score < 0.2 and verdict == "suspicious":
+                # ML says benign — reduce confidence of suspicious verdict
+                confidence = max(0.4, confidence - 0.15)
+            # Blend ML score into confidence
+            confidence = round(confidence * 0.7 + ml_score * 0.3, 4)
+
+        # Update sample with verdict + ML score
         await conn.execute("""
             UPDATE samples
             SET status = 'completed',
                 verdict = $1,
                 confidence_score = $2,
+                ml_score = $3,
                 analysis_completed_at = NOW()
-            WHERE id = $3
-        """, verdict, confidence, sample_id)
+            WHERE id = $4
+        """, verdict, confidence, ml_score, sample_id)
 
         # Store analysis report
         await conn.execute("""
@@ -380,6 +502,16 @@ async def process_analysis_result(task: dict, report: dict):
                 ON CONFLICT (ioc_type, value) DO NOTHING
             """, sample_id, ip)
 
+        # --- eBPF telemetry & Falco monitoring ---
+        ebpf_result = run_ebpf_telemetry(str(sample_id), verdict)
+        falco_result = run_falco_monitoring(str(sample_id), verdict)
+
+        logger.info(
+            "eBPF: %d events (%d suspicious), Falco: %d alerts (risk=%.1f)",
+            ebpf_result["event_count"], ebpf_result["suspicious_count"],
+            falco_result["total_alerts"], falco_result["risk_score"],
+        )
+
         # Update queue status
         await conn.execute("""
             UPDATE submission_queue
@@ -388,8 +520,9 @@ async def process_analysis_result(task: dict, report: dict):
         """, task["id"])
 
         logger.info(
-            "Processed sample %s: verdict=%s, confidence=%.2f, sigma_matches=%d",
+            "Processed sample %s: verdict=%s, confidence=%.2f, sigma=%d, ml_score=%s",
             sample_id, verdict, confidence, len(sigma_matches),
+            f"{ml_score:.4f}" if ml_score is not None else "N/A",
         )
 
 

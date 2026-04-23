@@ -1,0 +1,21 @@
+title: DNS Query to DGA Domain
+id: sandbox-007
+status: stable
+level: high
+description: Detects DNS queries to domains with high entropy (DGA indicator)
+author: Sandbox Platform
+date: 2024/01/15
+modified: 2024/01/15
+tags:
+    - attack.command_and_control
+    - attack.t1568.002
+logsource:
+    category: dns_query
+detection:
+    selection:
+        domain_entropy|gte: 3.5
+        domain_length|gte: 20
+    condition: selection
+falsepositives:
+    - CDN domains with long names
+    - Legitimate services using random subdomains

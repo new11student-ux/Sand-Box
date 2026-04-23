@@ -1,0 +1,24 @@
+title: Suspicious Process Injection
+id: sandbox-001
+status: stable
+level: high
+description: Detects process injection via VirtualAllocEx + WriteProcessMemory + CreateRemoteThread
+author: Sandbox Platform
+date: 2024/01/15
+modified: 2024/01/15
+tags:
+    - attack.defense_evasion
+    - attack.t1055
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        api_calls|contains:
+            - VirtualAllocEx
+            - WriteProcessMemory
+            - CreateRemoteThread
+    condition: selection
+falsepositives:
+    - Legitimate software using process injection (rare)
+    - Security tools injecting monitoring code

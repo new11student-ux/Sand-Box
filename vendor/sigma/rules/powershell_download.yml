@@ -1,0 +1,30 @@
+title: PowerShell Download and Execute
+id: sandbox-008
+status: stable
+level: high
+description: Detects PowerShell downloading and executing remote content
+author: Sandbox Platform
+date: 2024/01/15
+modified: 2024/01/15
+tags:
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_ps:
+        process_name|contains:
+            - powershell.exe
+            - powershell_ise.exe
+    selection_cmd:
+        command_line|contains:
+            - DownloadString
+            - DownloadFile
+            - Invoke-WebRequest
+            - IEX (
+            - Invoke-Expression
+    condition: selection_ps and selection_cmd
+falsepositives:
+    - Administrative scripts
+    - Software deployment tools

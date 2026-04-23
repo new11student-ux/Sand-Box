@@ -567,6 +567,140 @@ WHERE mitre_attack_id IS NOT NULL
 GROUP BY mitre_attack_tactic, mitre_attack_technique;
 
 -- ============================================================================
+-- EBPF EVENTS TABLE (Phase 2)
+-- Stores syscall telemetry from eBPF probes
+-- ============================================================================
+CREATE TABLE ebpf_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sample_id UUID REFERENCES samples(id) ON DELETE CASCADE,
+    sandbox_id UUID REFERENCES sandboxes(id),
+
+    -- Event data
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    pid INTEGER NOT NULL,
+    tid INTEGER NOT NULL,
+    process_name TEXT NOT NULL,
+    syscall_name TEXT NOT NULL,
+    syscall_nr INTEGER,
+    category TEXT CHECK (category IN ('process', 'file', 'network', 'memory', 'ipc', 'signal', 'other')),
+
+    -- Context
+    args JSONB DEFAULT '{}'::jsonb,
+    return_val INTEGER DEFAULT 0,
+    container_id TEXT,
+    suspicious BOOLEAN DEFAULT FALSE,
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ebpf_events_sample_id ON ebpf_events(sample_id);
+CREATE INDEX idx_ebpf_events_timestamp ON ebpf_events(timestamp);
+CREATE INDEX idx_ebpf_events_syscall ON ebpf_events(syscall_name);
+CREATE INDEX idx_ebpf_events_suspicious ON ebpf_events(suspicious) WHERE suspicious = TRUE;
+
+-- ============================================================================
+-- FALCO ALERTS TABLE (Phase 2)
+-- Stores runtime security alerts from Falco
+-- ============================================================================
+CREATE TABLE falco_alerts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sample_id UUID REFERENCES samples(id) ON DELETE CASCADE,
+
+    -- Alert data
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    rule TEXT NOT NULL,
+    priority TEXT CHECK (priority IN (
+        'EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR',
+        'WARNING', 'NOTICE', 'INFO', 'DEBUG'
+    )),
+    output TEXT NOT NULL,
+    source TEXT DEFAULT 'syscall',
+
+    -- Container context
+    container_id TEXT,
+    container_name TEXT,
+
+    -- Details
+    fields JSONB DEFAULT '{}'::jsonb,
+    mitre_attack_id TEXT,
+
+    -- Resolution
+    resolved BOOLEAN DEFAULT FALSE,
+    resolved_by UUID REFERENCES users(id),
+    resolution_notes TEXT,
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_falco_alerts_sample_id ON falco_alerts(sample_id);
+CREATE INDEX idx_falco_alerts_timestamp ON falco_alerts(timestamp);
+CREATE INDEX idx_falco_alerts_priority ON falco_alerts(priority);
+CREATE INDEX idx_falco_alerts_rule ON falco_alerts(rule);
+
+-- ============================================================================
+-- ML FEEDBACK TABLE (Phase 2)
+-- Stores analyst feedback for ML model retraining
+-- ============================================================================
+CREATE TABLE ml_feedback (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sample_id UUID NOT NULL REFERENCES samples(id) ON DELETE CASCADE,
+
+    -- Prediction vs. reality
+    predicted_verdict TEXT NOT NULL,
+    actual_verdict TEXT NOT NULL,
+    predicted_confidence DECIMAL(5, 4),
+
+    -- Analyst info
+    analyst_id UUID REFERENCES users(id),
+    analyst_notes TEXT,
+
+    -- Used for retraining
+    incorporated BOOLEAN DEFAULT FALSE,
+    incorporated_in_model TEXT,
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ml_feedback_sample_id ON ml_feedback(sample_id);
+CREATE INDEX idx_ml_feedback_incorporated ON ml_feedback(incorporated) WHERE incorporated = FALSE;
+
+-- ============================================================================
+-- SECURITY ALERTS VIEW (Phase 2)
+-- Unified view of Falco alerts + critical Sigma matches
+-- ============================================================================
+CREATE VIEW v_security_alerts AS
+SELECT
+    'falco' AS source,
+    fa.timestamp,
+    fa.rule AS alert_name,
+    fa.priority,
+    fa.output AS description,
+    fa.sample_id,
+    fa.container_name,
+    fa.mitre_attack_id,
+    fa.resolved
+FROM falco_alerts fa
+WHERE fa.priority IN ('EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR')
+UNION ALL
+SELECT
+    'sigma' AS source,
+    b.timestamp,
+    b.sigma_rule_name AS alert_name,
+    CASE b.severity
+        WHEN 'critical' THEN 'CRITICAL'
+        WHEN 'high' THEN 'ALERT'
+        ELSE 'WARNING'
+    END AS priority,
+    b.description,
+    b.sample_id,
+    NULL AS container_name,
+    b.mitre_attack_id,
+    FALSE AS resolved
+FROM behaviors b
+WHERE b.severity IN ('critical', 'high')
+AND b.sigma_rule_id IS NOT NULL;
+
+-- ============================================================================
 -- INITIAL DATA
 -- ============================================================================
 

@@ -199,10 +199,30 @@ services:
       - /lib/modules:/host/lib/modules:ro
       - /usr:/host/usr:ro
       - falco_rules:/etc/falco
+      - ./vendor/falco/rules:/etc/falco/rules.d:ro
     networks:
       - sandbox-network
     profiles:
       - security
+
+  # ============================================================================
+  # Kibana - eBPF Telemetry Visualization (Phase 2)
+  # ============================================================================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: sandbox-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - sandbox-network
+    profiles:
+      - full
 
   # ============================================================================
   # Worker - Background Job Processor
@@ -218,9 +238,13 @@ services:
       CAPEV2_URL: http://capev2:8080
       MISP_URL: http://misp:80
       STORAGE_PATH: /storage/samples
+      EBPF_TELEMETRY_DIR: /storage/telemetry
     volumes:
       - sample_storage:/storage/samples
+      - telemetry_storage:/storage/telemetry
       - ./src/worker:/app/src/worker
+      - ./src/ml:/app/src/ml
+      - ./src/observability:/app/src/observability
     depends_on:
       - postgres
       - redis
@@ -263,6 +287,8 @@ volumes:
   misp_db_data:
     driver: local
   elasticsearch_data:
+    driver: local
+  telemetry_storage:
     driver: local
   falco_rules:
     driver: local
