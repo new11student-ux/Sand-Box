@@ -1,0 +1,275 @@
+# Advanced Cybersecurity Sandbox Platform
+# Docker Compose Development Environment
+# Version: 1.0.0
+
+services:
+  # ============================================================================
+  # PostgreSQL Database
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: sandbox-postgres
+    environment:
+      POSTGRES_DB: sandbox_db
+      POSTGRES_USER: sandbox
+      POSTGRES_PASSWORD: sandbox_dev_password_change_me
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sandbox -d sandbox_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sandbox-network
+
+  # ============================================================================
+  # Redis - Queue and Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sandbox-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sandbox-network
+
+  # ============================================================================
+  # Sandbox Platform API
+  # ============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: sandbox-api
+    environment:
+      DATABASE_URL: postgresql://sandbox:sandbox_dev_password_change_me@postgres:5432/sandbox_db
+      REDIS_URL: redis://redis:6379
+      STORAGE_PATH: /storage/samples
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      LOG_LEVEL: INFO
+    volumes:
+      - sample_storage:/storage/samples
+      - ./src/api:/app/src/api
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - sandbox-network
+
+  # ============================================================================
+  # Analyst Dashboard (Frontend)
+  # ============================================================================
+  dashboard:
+    build:
+      context: ./src/frontend
+      dockerfile: ../../docker/Dockerfile.dashboard
+    container_name: sandbox-dashboard
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - sandbox-network
+
+  # ============================================================================
+  # CAPEv2 Sandbox (Malware Analysis)
+  # Note: Requires nested virtualization - may not work in all environments
+  # ============================================================================
+  capev2:
+    image: cuckoosandbox/cuckoo:latest
+    container_name: capev2-sandbox
+    privileged: true
+    environment:
+      - VIRTUALIZATION=KVM
+    volumes:
+      - capev2_storage:/opt/CAPEv2/storage
+      - /dev/kvm:/dev/kvm
+    ports:
+      - "8080:8080"  # CAPEv2 web UI
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - sandbox-network
+    profiles:
+      - full  # Only start with 'docker-compose --profile full up'
+
+  # ============================================================================
+  # MISP (Threat Intelligence Platform)
+  # ============================================================================
+  misp:
+    image: ghcr.io/misp/misp-docker:latest
+    container_name: sandbox-misp
+    environment:
+      - MISP_BASE_URL=http://localhost:8081
+      - MISP_ADMIN_EMAIL=admin@admin.test
+      - MISP_ADMIN_PASSWORD=admin_change_me_immediately
+      - MYSQL_HOST=misp-db
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=misp_dev_password_change_me
+      - MYSQL_DATABASE=misp
+    ports:
+      - "8081:80"
+    depends_on:
+      - misp-db
+    networks:
+      - sandbox-network
+    profiles:
+      - full
+
+  misp-db:
+    image: mariadb:10.11
+    container_name: sandbox-misp-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=misp_root_change_me
+      - MYSQL_DATABASE=misp
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=misp_dev_password_change_me
+    volumes:
+      - misp_db_data:/var/lib/mysql
+    networks:
+      - sandbox-network
+    profiles:
+      - full
+
+  # ============================================================================
+  # Elasticsearch - For Behavioral Log Storage
+  # ============================================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: sandbox-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - sandbox-network
+    profiles:
+      - full
+
+  # ============================================================================
+  # Falco - Runtime Security Monitoring
+  # ============================================================================
+  falco:
+    image: falcosecurity/falco:latest
+    container_name: sandbox-falco
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - /dev:/host/dev
+      - /proc:/host/proc:ro
+      - /boot:/host/boot:ro
+      - /lib/modules:/host/lib/modules:ro
+      - /usr:/host/usr:ro
+      - falco_rules:/etc/falco
+    networks:
+      - sandbox-network
+    profiles:
+      - security
+
+  # ============================================================================
+  # Worker - Background Job Processor
+  # ============================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: sandbox-worker
+    environment:
+      DATABASE_URL: postgresql://sandbox:sandbox_dev_password_change_me@postgres:5432/sandbox_db
+      REDIS_URL: redis://redis:6379
+      CAPEV2_URL: http://capev2:8080
+      MISP_URL: http://misp:80
+      STORAGE_PATH: /storage/samples
+    volumes:
+      - sample_storage:/storage/samples
+      - ./src/worker:/app/src/worker
+    depends_on:
+      - postgres
+      - redis
+      - capev2
+      - misp
+    networks:
+      - sandbox-network
+    profiles:
+      - full
+
+  # ============================================================================
+  # Nginx - Reverse Proxy
+  # ============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: sandbox-nginx
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "443:443"
+      - "80:80"
+    depends_on:
+      - api
+      - dashboard
+    networks:
+      - sandbox-network
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  sample_storage:
+    driver: local
+  capev2_storage:
+    driver: local
+  misp_db_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  falco_rules:
+    driver: local
+
+networks:
+  sandbox-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

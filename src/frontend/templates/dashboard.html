@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox Platform Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #e94560;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--bg-card);
+        }
+
+        .navbar h1 {
+            font-size: 1.5rem;
+            color: var(--accent);
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-left: 1.5rem;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .stat-card.pending .stat-value { color: var(--warning); }
+        .stat-card.analyzing .stat-value { color: var(--info); }
+        .stat-card.completed .stat-value { color: var(--success); }
+        .stat-card.malicious .stat-value { color: var(--danger); }
+        .stat-card.benign .stat-value { color: var(--success); }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        tr:hover {
+            background: var(--bg-secondary);
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-pending { background: var(--warning); color: #000; }
+        .status-analyzing { background: var(--info); color: #fff; }
+        .status-completed { background: var(--success); color: #000; }
+        .status-failed { background: var(--danger); color: #fff; }
+
+        .verdict-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .verdict-malicious { background: var(--danger); color: #fff; }
+        .verdict-benign { background: var(--success); color: #000; }
+        .verdict-suspicious { background: var(--warning); color: #000; }
+        .verdict-unknown { background: var(--text-secondary); color: #fff; }
+
+        .hash {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .ioc-type {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 0.5rem;
+        }
+
+        .refresh-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #d63850;
+        }
+
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Statistics Cards -->
+        <div class="stats-grid">
+            <div class="stat-card pending">
+                <div class="stat-value">{{ stats.pending_samples or 0 }}</div>
+                <div class="stat-label">Pending Analysis</div>
+            </div>
+            <div class="stat-card analyzing">
+                <div class="stat-value">{{ stats.analyzing_samples or 0 }}</div>
+                <div class="stat-label">Currently Analyzing</div>
+            </div>
+            <div class="stat-card completed">
+                <div class="stat-value">{{ stats.completed_samples or 0 }}</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card malicious">
+                <div class="stat-value">{{ stats.malicious_samples or 0 }}</div>
+                <div class="stat-label">Malicious Detected</div>
+            </div>
+            <div class="stat-card benign">
+                <div class="stat-value">{{ stats.benign_samples or 0 }}</div>
+                <div class="stat-label">Benign</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-grid">
+            <!-- Recent Samples -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Samples</h2>
+                    <button class="refresh-btn" onclick="location.reload()">Refresh</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>SHA256</th>
+                            <th>Status</th>
+                            <th>Verdict</th>
+                            <th>Submitted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sample in recent_samples %}
+                        <tr>
+                            <td>{{ sample.file_name[:30] }}{% if sample.file_name|length > 30 %}...{% endif %}</td>
+                            <td class="hash">{{ sample.sha256_hash[:16] }}...</td>
+                            <td>
+                                <span class="status-badge status-{{ sample.status }}">
+                                    {{ sample.status }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if sample.verdict %}
+                                <span class="verdict-badge verdict-{{ sample.verdict }}">
+                                    {{ sample.verdict }}
+                                </span>
+                                {% else %}
+                                <span class="verdict-badge verdict-unknown">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ sample.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Recent IOCs -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent IOCs</h2>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    {% for ioc in recent_iocs %}
+                    <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                            <span class="ioc-type">{{ ioc.ioc_type }}</span>
+                            <span class="status-badge status-{{ 'malicious' if ioc.confidence == 'high' else 'suspicious' if ioc.confidence == 'medium' else 'pending' }}">
+                                {{ ioc.confidence }}
+                            </span>
+                        </div>
+                        <div class="hash" style="word-break: break-all;">{{ ioc.value }}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            First seen: {{ ioc.first_seen.strftime('%Y-%m-%d %H:%M') }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(() => location.reload(), 30000);
+    </script>
+</body>
+</html>

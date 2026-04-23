@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ sample.file_name }} - Sandbox Platform</title>
+    <style>
+        :root { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --bg-card: #0f3460; --text-primary: #eee; --text-secondary: #aaa; --accent: #e94560; --success: #4ade80; --warning: #fbbf24; --danger: #ef4444; --info: #3b82f6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--text-primary); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .breadcrumb { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; font-size: 0.9rem; color: var(--text-secondary); }
+        .breadcrumb a { color: var(--info); text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .sample-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
+        .sample-title { display: flex; align-items: center; gap: 1rem; }
+        .sample-title h2 { font-size: 1.5rem; word-break: break-all; }
+        .verdict-large { padding: 0.5rem 1.5rem; border-radius: 25px; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        .verdict-malicious { background: var(--danger); color: #fff; }
+        .verdict-benign { background: var(--success); color: #000; }
+        .verdict-suspicious { background: var(--warning); color: #000; }
+        .verdict-unknown { background: var(--text-secondary); color: #fff; }
+        .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card-title { font-size: 1.1rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bg-secondary); display: flex; align-items: center; gap: 0.5rem; }
+        .meta-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .meta-label { color: var(--text-secondary); font-size: 0.85rem; }
+        .meta-value { font-family: 'Courier New', monospace; font-size: 0.85rem; word-break: break-all; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--bg-secondary); font-size: 0.85rem; }
+        th { color: var(--text-secondary); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; }
+        tr:hover { background: var(--bg-secondary); }
+        .severity-badge { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .severity-critical { background: #dc2626; color: #fff; }
+        .severity-high { background: var(--danger); color: #fff; }
+        .severity-medium { background: var(--warning); color: #000; }
+        .severity-low { background: var(--info); color: #fff; }
+        .severity-info { background: var(--text-secondary); color: #fff; }
+        .mitre-tag { display: inline-block; padding: 0.2rem 0.5rem; background: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 4px; font-size: 0.75rem; margin: 0.15rem; color: var(--accent); }
+        .ioc-type-badge { display: inline-block; padding: 0.2rem 0.5rem; background: var(--bg-secondary); border-radius: 4px; font-size: 0.7rem; font-weight: 600; color: var(--info); }
+        .empty-state { text-align: center; padding: 2rem; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="/">Dashboard</a> / <a href="/samples">Samples</a> / <span>{{ sample.file_name[:40] }}</span>
+        </div>
+
+        <div class="sample-header">
+            <div class="sample-title">
+                <h2>🔬 {{ sample.file_name }}</h2>
+            </div>
+            <span class="verdict-large verdict-{{ sample.verdict or 'unknown' }}">
+                {{ sample.verdict or 'Pending' }}
+            </span>
+        </div>
+
+        <!-- Metadata Cards -->
+        <div class="meta-grid">
+            <div class="card">
+                <div class="card-title">📋 File Information</div>
+                <div class="meta-row"><span class="meta-label">SHA-256</span><span class="meta-value">{{ sample.sha256_hash }}</span></div>
+                <div class="meta-row"><span class="meta-label">SHA-1</span><span class="meta-value">{{ sample.sha1_hash }}</span></div>
+                <div class="meta-row"><span class="meta-label">MD5</span><span class="meta-value">{{ sample.md5_hash }}</span></div>
+                <div class="meta-row"><span class="meta-label">File Size</span><span class="meta-value">{{ sample.file_size | filesizeformat }}</span></div>
+                <div class="meta-row"><span class="meta-label">File Type</span><span class="meta-value">{{ sample.file_type or '—' }}</span></div>
+                <div class="meta-row"><span class="meta-label">MIME Type</span><span class="meta-value">{{ sample.mime_type or '—' }}</span></div>
+            </div>
+            <div class="card">
+                <div class="card-title">⏱️ Analysis Timeline</div>
+                <div class="meta-row"><span class="meta-label">Status</span><span class="meta-value">{{ sample.status }}</span></div>
+                <div class="meta-row"><span class="meta-label">Submitted</span><span class="meta-value">{{ sample.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+                <div class="meta-row"><span class="meta-label">Analysis Started</span><span class="meta-value">{{ sample.analysis_started_at.strftime('%Y-%m-%d %H:%M:%S') if sample.analysis_started_at else '—' }}</span></div>
+                <div class="meta-row"><span class="meta-label">Completed</span><span class="meta-value">{{ sample.analysis_completed_at.strftime('%Y-%m-%d %H:%M:%S') if sample.analysis_completed_at else '—' }}</span></div>
+                <div class="meta-row"><span class="meta-label">Confidence</span><span class="meta-value">{{ "%.1f"|format((sample.confidence_score or 0) * 100) }}%</span></div>
+                <div class="meta-row"><span class="meta-label">Priority</span><span class="meta-value">{{ sample.priority }}</span></div>
+            </div>
+        </div>
+
+        <!-- Behaviors -->
+        <div class="card">
+            <div class="card-title">🔍 Detected Behaviors ({{ behaviors|length }})</div>
+            {% if behaviors %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Description</th>
+                        <th>Sigma Rule</th>
+                        <th>MITRE ATT&CK</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in behaviors %}
+                    <tr>
+                        <td>{{ b.behavior_type }}</td>
+                        <td><span class="severity-badge severity-{{ b.severity or 'info' }}">{{ b.severity or 'info' }}</span></td>
+                        <td>{{ b.description[:80] }}{% if b.description|length > 80 %}...{% endif %}</td>
+                        <td>{{ b.sigma_rule_name or '—' }}</td>
+                        <td>
+                            {% if b.mitre_attack_id %}
+                            <span class="mitre-tag">{{ b.mitre_attack_id }}</span>
+                            {% endif %}
+                            {% if b.mitre_attack_tactic %}
+                            <span class="mitre-tag" style="border-color: var(--warning); color: var(--warning);">{{ b.mitre_attack_tactic }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">No behaviors detected yet.</div>
+            {% endif %}
+        </div>
+
+        <!-- IOCs -->
+        <div class="card">
+            <div class="card-title">🎯 Indicators of Compromise ({{ iocs|length }})</div>
+            {% if iocs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Confidence</th>
+                        <th>TLP</th>
+                        <th>First Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ioc in iocs %}
+                    <tr>
+                        <td><span class="ioc-type-badge">{{ ioc.ioc_type }}</span></td>
+                        <td class="meta-value">{{ ioc.value }}</td>
+                        <td><span class="severity-badge severity-{{ 'high' if ioc.confidence == 'high' else 'medium' if ioc.confidence == 'medium' else 'low' }}">{{ ioc.confidence or '—' }}</span></td>
+                        <td>{{ ioc.tlp or '—' }}</td>
+                        <td style="font-size:0.8rem;">{{ ioc.first_seen.strftime('%Y-%m-%d %H:%M') if ioc.first_seen else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">No IOCs extracted yet.</div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Samples - Sandbox Platform</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #e94560;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover, .nav-links a.active { color: var(--text-primary); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .page-header h2 { font-size: 1.6rem; }
+        .filters { display: flex; gap: 0.75rem; align-items: center; }
+        .filters select, .filters input {
+            background: var(--bg-card); border: 1px solid var(--bg-secondary);
+            color: var(--text-primary); padding: 0.5rem 1rem; border-radius: 8px;
+            font-size: 0.9rem; outline: none;
+        }
+        .filters select:focus, .filters input:focus { border-color: var(--accent); }
+        .btn { background: var(--accent); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; transition: background 0.3s; font-size: 0.9rem; }
+        .btn:hover { background: #d63850; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--bg-secondary); }
+        th { color: var(--text-secondary); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        tr { transition: background 0.2s; }
+        tr:hover { background: var(--bg-secondary); }
+        .status-badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .status-pending { background: var(--warning); color: #000; }
+        .status-queued { background: var(--info); color: #fff; }
+        .status-analyzing { background: var(--info); color: #fff; }
+        .status-completed { background: var(--success); color: #000; }
+        .status-failed { background: var(--danger); color: #fff; }
+        .verdict-badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .verdict-malicious { background: var(--danger); color: #fff; }
+        .verdict-benign { background: var(--success); color: #000; }
+        .verdict-suspicious { background: var(--warning); color: #000; }
+        .verdict-unknown { background: var(--text-secondary); color: #fff; }
+        .hash { font-family: 'Courier New', monospace; font-size: 0.8rem; color: var(--text-secondary); }
+        .confidence-bar { display: flex; align-items: center; gap: 0.5rem; }
+        .confidence-bar .bar { height: 6px; border-radius: 3px; background: var(--bg-secondary); width: 60px; overflow: hidden; }
+        .confidence-bar .bar .fill { height: 100%; border-radius: 3px; }
+        a.sample-link { color: var(--info); text-decoration: none; }
+        a.sample-link:hover { text-decoration: underline; }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples" class="active">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h2>📦 Sample Analysis</h2>
+            <div class="filters">
+                <form method="GET" action="/samples" style="display:flex;gap:0.5rem;align-items:center;">
+                    <select name="status_filter">
+                        <option value="">All Statuses</option>
+                        <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="queued" {% if status_filter == 'queued' %}selected{% endif %}>Queued</option>
+                        <option value="analyzing" {% if status_filter == 'analyzing' %}selected{% endif %}>Analyzing</option>
+                        <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
+                        <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                    </select>
+                    <select name="verdict_filter">
+                        <option value="">All Verdicts</option>
+                        <option value="malicious" {% if verdict_filter == 'malicious' %}selected{% endif %}>Malicious</option>
+                        <option value="suspicious" {% if verdict_filter == 'suspicious' %}selected{% endif %}>Suspicious</option>
+                        <option value="benign" {% if verdict_filter == 'benign' %}selected{% endif %}>Benign</option>
+                    </select>
+                    <button type="submit" class="btn">Filter</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            {% if samples %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>SHA-256</th>
+                        <th>Status</th>
+                        <th>Verdict</th>
+                        <th>Confidence</th>
+                        <th>Submitted</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sample in samples %}
+                    <tr>
+                        <td>
+                            <a href="/sample/{{ sample.id }}" class="sample-link">
+                                {{ sample.file_name[:35] }}{% if sample.file_name|length > 35 %}...{% endif %}
+                            </a>
+                        </td>
+                        <td class="hash">{{ sample.sha256_hash[:16] }}...</td>
+                        <td><span class="status-badge status-{{ sample.status }}">{{ sample.status }}</span></td>
+                        <td>
+                            {% if sample.verdict %}
+                            <span class="verdict-badge verdict-{{ sample.verdict }}">{{ sample.verdict }}</span>
+                            {% else %}
+                            <span class="verdict-badge verdict-unknown">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if sample.confidence_score %}
+                            <div class="confidence-bar">
+                                <div class="bar">
+                                    <div class="fill" style="width: {{ (sample.confidence_score * 100)|int }}%; background: {% if sample.confidence_score > 0.7 %}var(--danger){% elif sample.confidence_score > 0.4 %}var(--warning){% else %}var(--success){% endif %};"></div>
+                                </div>
+                                <span style="font-size:0.8rem;color:var(--text-secondary);">{{ "%.0f"|format(sample.confidence_score * 100) }}%</span>
+                            </div>
+                            {% else %}
+                            <span style="color:var(--text-secondary);font-size:0.8rem;">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:0.85rem;">{{ sample.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td style="font-size:0.85rem;">
+                            {% if sample.analysis_completed_at %}
+                                {{ sample.analysis_completed_at.strftime('%Y-%m-%d %H:%M') }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">📭</div>
+                <p>No samples found matching your filters.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

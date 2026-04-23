@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MITRE ATT&CK Coverage - Sandbox Platform</title>
+    <style>
+        :root { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --bg-card: #0f3460; --text-primary: #eee; --text-secondary: #aaa; --accent: #e94560; --success: #4ade80; --warning: #fbbf24; --danger: #ef4444; --info: #3b82f6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover, .nav-links a.active { color: var(--text-primary); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .page-header { margin-bottom: 2rem; }
+        .page-header h2 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+        .page-header p { color: var(--text-secondary); font-size: 0.95rem; }
+
+        /* Heatmap grid */
+        .matrix-container { margin-bottom: 2rem; }
+        .tactic-group { margin-bottom: 1.5rem; }
+        .tactic-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--bg-card); }
+        .tactic-name { font-size: 1.1rem; font-weight: 600; text-transform: capitalize; }
+        .tactic-count { background: var(--accent); color: #fff; padding: 0.15rem 0.6rem; border-radius: 10px; font-size: 0.75rem; }
+        .technique-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .technique-card {
+            background: var(--bg-card); border-radius: 8px; padding: 0.75rem 1rem;
+            min-width: 220px; transition: all 0.3s; cursor: default;
+            border-left: 3px solid transparent;
+        }
+        .technique-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .technique-card.heat-1 { border-left-color: #3b82f6; }
+        .technique-card.heat-2 { border-left-color: #eab308; }
+        .technique-card.heat-3 { border-left-color: #f97316; }
+        .technique-card.heat-4 { border-left-color: #ef4444; }
+        .technique-card.heat-5 { border-left-color: #dc2626; background: rgba(220,38,38,0.1); }
+        .technique-id { font-family: 'Courier New', monospace; font-size: 0.8rem; color: var(--accent); margin-bottom: 0.25rem; }
+        .technique-name { font-size: 0.85rem; margin-bottom: 0.35rem; }
+        .technique-count { font-size: 0.75rem; color: var(--text-secondary); }
+        .technique-rules { display: flex; flex-wrap: wrap; gap: 0.2rem; margin-top: 0.35rem; }
+        .rule-tag { font-size: 0.65rem; padding: 0.1rem 0.4rem; background: var(--bg-secondary); border-radius: 3px; color: var(--text-secondary); }
+
+        /* Legend */
+        .legend { display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: center; }
+        .legend-label { font-size: 0.85rem; color: var(--text-secondary); }
+        .legend-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+        .legend-color { width: 16px; height: 16px; border-radius: 3px; }
+
+        /* Summary */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .summary-card { background: var(--bg-card); border-radius: 10px; padding: 1.25rem; text-align: center; }
+        .summary-value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+        .summary-label { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack" class="active">MITRE ATT&CK</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h2>⚔️ MITRE ATT&CK Coverage</h2>
+            <p>Techniques detected across all analyzed samples, grouped by tactic.</p>
+        </div>
+
+        {% if coverage %}
+        <!-- Summary -->
+        <div class="summary-grid">
+            {% set tactics_seen = [] %}
+            {% set total_detections = [0] %}
+            {% for c in coverage %}
+                {% if c.mitre_attack_tactic and c.mitre_attack_tactic not in tactics_seen %}
+                    {% if tactics_seen.append(c.mitre_attack_tactic) %}{% endif %}
+                {% endif %}
+                {% if total_detections.append(total_detections.pop() + c.detection_count) %}{% endif %}
+            {% endfor %}
+            <div class="summary-card">
+                <div class="summary-value">{{ coverage|length }}</div>
+                <div class="summary-label">Unique Techniques</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value">{{ tactics_seen|length }}</div>
+                <div class="summary-label">Tactics Covered</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value">{{ total_detections[0] }}</div>
+                <div class="summary-label">Total Detections</div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <span class="legend-label">Detection intensity:</span>
+            <div class="legend-item"><div class="legend-color" style="background:#3b82f6;"></div> 1</div>
+            <div class="legend-item"><div class="legend-color" style="background:#eab308;"></div> 2-3</div>
+            <div class="legend-item"><div class="legend-color" style="background:#f97316;"></div> 4-6</div>
+            <div class="legend-item"><div class="legend-color" style="background:#ef4444;"></div> 7-9</div>
+            <div class="legend-item"><div class="legend-color" style="background:#dc2626;"></div> 10+</div>
+        </div>
+
+        <!-- Tactic Groups -->
+        <div class="matrix-container">
+            {% set current_tactic = [None] %}
+            {% for c in coverage|sort(attribute='mitre_attack_tactic') %}
+                {% if c.mitre_attack_tactic != current_tactic[0] %}
+                    {% if current_tactic[0] is not none %}</div></div>{% endif %}
+                    {% if current_tactic.append(c.mitre_attack_tactic) %}{% endif %}
+                    {% if current_tactic.pop(0) or true %}{% endif %}
+                    <div class="tactic-group">
+                        <div class="tactic-header">
+                            <span class="tactic-name">{{ c.mitre_attack_tactic|replace('_', ' ')|title if c.mitre_attack_tactic else 'Unknown' }}</span>
+                        </div>
+                        <div class="technique-grid">
+                {% endif %}
+
+                {% set heat = 'heat-1' %}
+                {% if c.detection_count >= 10 %}{% set heat = 'heat-5' %}
+                {% elif c.detection_count >= 7 %}{% set heat = 'heat-4' %}
+                {% elif c.detection_count >= 4 %}{% set heat = 'heat-3' %}
+                {% elif c.detection_count >= 2 %}{% set heat = 'heat-2' %}
+                {% endif %}
+
+                <div class="technique-card {{ heat }}">
+                    <div class="technique-id">{{ c.mitre_attack_technique or '—' }}</div>
+                    <div class="technique-name">{{ c.mitre_attack_technique or 'Unknown Technique' }}</div>
+                    <div class="technique-count">{{ c.detection_count }} detection{{ 's' if c.detection_count != 1 }}</div>
+                    {% if c.detecting_rules %}
+                    <div class="technique-rules">
+                        {% for rule in c.detecting_rules[:3] %}
+                        <span class="rule-tag">{{ rule }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            {% if coverage %}</div></div>{% endif %}
+        </div>
+
+        {% else %}
+        <div class="empty-state" style="background:var(--bg-card);border-radius:12px;padding:3rem;">
+            <p style="font-size:1.1rem;margin-bottom:0.5rem;">No MITRE ATT&CK mappings yet.</p>
+            <p>Submit and analyze samples to build technique coverage.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

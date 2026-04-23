@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IOCs - Sandbox Platform</title>
+    <style>
+        :root { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --bg-card: #0f3460; --text-primary: #eee; --text-secondary: #aaa; --accent: #e94560; --success: #4ade80; --warning: #fbbf24; --danger: #ef4444; --info: #3b82f6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover, .nav-links a.active { color: var(--text-primary); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .page-header h2 { font-size: 1.6rem; }
+        .filters { display: flex; gap: 0.75rem; }
+        .filters a { padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; text-decoration: none; transition: all 0.3s; }
+        .filters a.active { background: var(--accent); color: #fff; }
+        .filters a:not(.active) { background: var(--bg-card); color: var(--text-secondary); }
+        .filters a:hover:not(.active) { color: var(--text-primary); }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--bg-secondary); }
+        th { color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        tr:hover { background: var(--bg-secondary); }
+        .ioc-type-badge { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .type-ip { background: #1e3a5f; color: #60a5fa; }
+        .type-domain { background: #1e3a2a; color: #4ade80; }
+        .type-url { background: #3a1e1e; color: #f87171; }
+        .type-email { background: #3a2e1e; color: #fbbf24; }
+        .type-file_hash { background: #2e1e3a; color: #a78bfa; }
+        .type-mutex { background: #1e2e3a; color: #67e8f9; }
+        .type-registry_key { background: #3a341e; color: #d4a24e; }
+        .type-default { background: var(--bg-secondary); color: var(--text-secondary); }
+        .confidence-badge { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .confidence-high { background: var(--danger); color: #fff; }
+        .confidence-medium { background: var(--warning); color: #000; }
+        .confidence-low { background: var(--text-secondary); color: #fff; }
+        .tlp-badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+        .tlp-red { background: #dc2626; color: #fff; }
+        .tlp-amber { background: #d97706; color: #fff; }
+        .tlp-green { background: #16a34a; color: #fff; }
+        .tlp-white { background: #e5e7eb; color: #111; }
+        .value-cell { font-family: 'Courier New', monospace; font-size: 0.8rem; word-break: break-all; max-width: 350px; }
+        .tags { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+        .tag { display: inline-block; padding: 0.15rem 0.4rem; background: var(--bg-secondary); border-radius: 3px; font-size: 0.65rem; color: var(--text-secondary); }
+        .stats-bar { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .stat-pill { background: var(--bg-card); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; }
+        .stat-pill strong { color: var(--accent); }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs" class="active">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h2>🎯 Indicators of Compromise</h2>
+        </div>
+
+        <div class="filters" style="margin-bottom: 1.5rem;">
+            <a href="/iocs" class="{% if not ioc_type_filter %}active{% endif %}">All</a>
+            <a href="/iocs?ioc_type=ip" class="{% if ioc_type_filter == 'ip' %}active{% endif %}">🌐 IP</a>
+            <a href="/iocs?ioc_type=domain" class="{% if ioc_type_filter == 'domain' %}active{% endif %}">🔗 Domain</a>
+            <a href="/iocs?ioc_type=url" class="{% if ioc_type_filter == 'url' %}active{% endif %}">🔗 URL</a>
+            <a href="/iocs?ioc_type=file_hash" class="{% if ioc_type_filter == 'file_hash' %}active{% endif %}">🔑 Hash</a>
+            <a href="/iocs?ioc_type=mutex" class="{% if ioc_type_filter == 'mutex' %}active{% endif %}">🔒 Mutex</a>
+            <a href="/iocs?ioc_type=registry_key" class="{% if ioc_type_filter == 'registry_key' %}active{% endif %}">📝 Registry</a>
+        </div>
+
+        <div class="stats-bar">
+            <span class="stat-pill"><strong>{{ iocs|length }}</strong> IOCs displayed</span>
+        </div>
+
+        <div class="card">
+            {% if iocs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Confidence</th>
+                        <th>TLP</th>
+                        <th>Samples</th>
+                        <th>Tags</th>
+                        <th>First Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ioc in iocs %}
+                    <tr>
+                        <td><span class="ioc-type-badge type-{{ ioc.ioc_type|default('default') }}">{{ ioc.ioc_type }}</span></td>
+                        <td class="value-cell">{{ ioc.value }}</td>
+                        <td><span class="confidence-badge confidence-{{ ioc.confidence|default('low') }}">{{ ioc.confidence|default('—') }}</span></td>
+                        <td>
+                            {% if ioc.tlp %}
+                            <span class="tlp-badge tlp-{{ ioc.tlp }}">TLP:{{ ioc.tlp|upper }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{{ ioc.sample_count|default(0) }}</td>
+                        <td>
+                            <div class="tags">
+                                {% if ioc.ti_tags %}
+                                    {% for tag in ioc.ti_tags[:3] %}
+                                    <span class="tag">{{ tag }}</span>
+                                    {% endfor %}
+                                {% else %}—{% endif %}
+                            </div>
+                        </td>
+                        <td style="font-size:0.8rem;">{{ ioc.first_seen.strftime('%Y-%m-%d') if ioc.first_seen else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>No IOCs found{% if ioc_type_filter %} for type "{{ ioc_type_filter }}"{% endif %}.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
