@@ -88,20 +88,53 @@ The platform features an advanced **AI Agent Sandbox** designed for safely execu
 
 ```
 sandbox-platform/
-├── Dockerfile                    # Unified production container
-├── docker-compose.dev.yml        # Minimal deployment stack
+├── Dockerfile                    # Unified container image
+├── docker-compose.dev.yml        # Minimal: Postgres + Platform
+├── docker-compose.yml            # Full stack (CAPEv2, MISP, etc.)
+├── .env                          # Your local configuration
+├── requirements.txt              # Python dependencies
 ├── src/
 │   ├── main.py                   # Integrated server launcher
-│   ├── api/                      # REST API implementation
-│   ├── frontend/                 # Analyst dashboard & templates
-│   ├── ai_sandbox/               # AI agent containment logic
-│   ├── ml/                       # XGBoost malware classifier
-│   ├── worker/                   # Background detonation worker
-│   ├── database/                 # SQL schema & migrations
-│   └── infrastructure/           # K8s, Honeypots, & Retention
-├── docs/                         # Detailed design & documentation
-├── tests/                        # Security & validation suite
-└── .env.example                  # Configuration template
+│   ├── api/
+│   │   ├── submission.py         # REST API (submit, status, reports)
+│   │   ├── code_interpreter.py   # AI code execution endpoint
+│   │   └── sanitize_document.py  # Document sanitization endpoint
+│   ├── frontend/
+│   │   ├── dashboard.py          # Dashboard web application
+│   │   └── templates/            # HTML templates (Jinja2)
+│   ├── worker/
+│   │   ├── main.py               # Background analysis worker
+│   │   └── evasion_resistance.py # Anti-sandbox-detection engine
+│   ├── ai/
+│   │   ├── orchestrator.py       # AI agent governance
+│   │   └── playbook_generator.py # Automated IR playbook creation
+│   ├── ml/
+│   │   └── false_positive_classifier.py  # XGBoost + SHAP classifier
+│   ├── network/
+│   │   └── egress_policy.py      # Dynamic network firewall
+│   ├── config/
+│   │   ├── auth.py               # Identity provider abstraction
+│   │   └── demo_mode.py          # Demo feature flags
+│   ├── database/
+│   │   └── schema.sql            # PostgreSQL schema
+│   ├── infrastructure/
+│   │   ├── retention_policy.py   # GDPR data lifecycle management
+│   │   ├── honeypot_router.py    # Traffic routing to honeypots
+│   │   └── k8s/                  # Kubernetes deployment files
+│   └── metrics/
+│       └── research_metrics.py   # Academic metric export
+├── docs/
+│   ├── THREAT_MODEL.md           # STRIDE threat analysis
+│   ├── REPRODUCIBILITY.md        # Academic reproducibility guide
+│   ├── REAL_LIFE_TESTING.md      # Detailed Deployment & Usage Guide
+│   └── adr/                      # Architecture Decision Records
+├── scripts/
+│   ├── verify-isolation.sh       # Network isolation verification
+│   ├── demo_graduation.sh        # One-click demo launcher
+│   └── export_thesis_data.py     # Thesis data bundler
+├── tests/
+│   └── test_research_validity.py # SHAP consistency + evasion tests
+└── vendor/                       # Git submodules (CAPEv2, MISP, etc.)
 ```
 
 ## Implementation Status (Phases 0-6 Complete)
