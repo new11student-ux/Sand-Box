@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Sandbox - Sandbox Platform</title>
+    <style>
+        :root { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --bg-card: #0f3460; --text-primary: #eee; --text-secondary: #aaa; --accent: #e94560; --success: #4ade80; --warning: #fbbf24; --danger: #ef4444; --info: #3b82f6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-links a.active { color: var(--accent); font-weight: 600; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        .header h2 { font-size: 1.8rem; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card-title { font-size: 1.1rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bg-secondary); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid var(--bg-secondary); }
+        th { color: var(--text-secondary); font-weight: 600; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.5px; }
+        tr:hover { background: var(--bg-secondary); }
+        .status-badge { padding: 0.3rem 0.8rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .status-success { background: var(--success); color: #000; }
+        .status-error { background: var(--danger); color: #fff; }
+        .status-timeout { background: var(--warning); color: #000; }
+        .details-pre { background: #0b1a30; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; overflow-x: auto; color: #a5b4fc; }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+        .gvisor-badge { background: #4a148c; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-left: 0.5rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+            <a href="/ai-sandbox" class="active">AI Sandbox</a>
+            <a href="/isolation">Isolation</a>
+            <a href="/advanced">Advanced</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <h2>🤖 AI Agent Sandbox Executions</h2>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                    Isolated ephemeral environments using E2B and gVisor <span class="gvisor-badge">runsc</span>
+                </p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Recent Executions ({{ executions|length }})</div>
+            {% if executions %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Execution ID</th>
+                        <th>Language</th>
+                        <th>Status</th>
+                        <th>Runtime (ms)</th>
+                        <th>Time</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for exec in executions %}
+                    {% set details = exec.details|fromjson %}
+                    <tr>
+                        <td style="font-family: monospace; font-size: 0.85rem;">{{ details.execution_id[:8] }}...</td>
+                        <td>{{ details.language|upper }}</td>
+                        <td>
+                            <span class="status-badge status-{{ details.status }}">
+                                {{ details.status }}
+                            </span>
+                        </td>
+                        <td>{{ details.execution_time_ms }} ms</td>
+                        <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ exec.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            <button onclick="toggleDetails('details-{{ exec.id }}')" style="background: var(--info); color: white; border: none; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">View</button>
+                        </td>
+                    </tr>
+                    <tr id="details-{{ exec.id }}" style="display: none; background: rgba(0,0,0,0.2);">
+                        <td colspan="6" style="padding: 1rem;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div>
+                                    <h4 style="color: var(--text-secondary); margin-bottom: 0.5rem;">Execution Details (JSON)</h4>
+                                    <pre class="details-pre">{{ details | tojson(indent=2) }}</pre>
+                                </div>
+                                <div>
+                                    <h4 style="color: var(--text-secondary); margin-bottom: 0.5rem;">Network Egress Policy</h4>
+                                    <pre class="details-pre" style="color: #6ee7b7;">{
+  "access_level": "restricted",
+  "default_action": "DROP",
+  "rules": [
+    {"type": "egress", "action": "ACCEPT", "port": 53},
+    {"type": "egress", "action": "DROP", "destination": "10.0.0.0/8"}
+  ]
+}</pre>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">🧪</div>
+                <h3>No agent executions yet.</h3>
+                <p style="margin-top: 0.5rem;">Use the POST /api/v1/ai-sandbox/execute endpoint to submit code.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function toggleDetails(id) {
+            const el = document.getElementById(id);
+            if (el.style.display === 'none') {
+                el.style.display = 'table-row';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

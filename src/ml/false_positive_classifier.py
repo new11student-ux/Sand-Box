@@ -481,6 +481,13 @@ class FalsePositiveClassifier:
 
         return bool(prediction), float(probability), explanation
 
+    def explain(self, behavior_data: Dict) -> Dict:
+        """
+        Standalone method to get just the SHAP explanation, useful for testing consistency.
+        """
+        _, _, explanation = self.predict(behavior_data)
+        return explanation
+
     def save(self):
         """Save model to disk."""
         model_file = self.model_path / "false_positive_classifier.json"

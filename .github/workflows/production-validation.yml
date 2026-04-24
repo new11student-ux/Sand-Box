@@ -1,0 +1,40 @@
+name: Production Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'k8s/**'
+      - 'src/confidential/**'
+
+jobs:
+  validate-k8s:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Validate manifests
+      run: |
+        kubectl apply --dry-run=client -k k8s/base/ -o yaml > /dev/null
+        echo "✅ All Kubernetes manifests are valid"
+    
+    - name: Security scan with Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: 'k8s/'
+        format: 'table'
+
+  validate-enarx-config:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate Enarx TOML syntax
+      run: |
+        pip install toml
+        python -c "import toml; toml.load('src/confidential/Enarx.toml')"
+        echo "✅ Enarx configuration is valid TOML"

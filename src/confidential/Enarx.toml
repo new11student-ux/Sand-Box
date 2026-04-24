@@ -1,0 +1,26 @@
+[enarx]
+id = "sandbox-ml-threat-classifier"
+version = "0.1.0"
+description = "Confidential ML Threat Classifier for Sandbox Platform"
+
+[deploy]
+target = "sgx" # Can be "sgx", "sev", or "none" (for testing)
+memory = "512M"
+threads = 4
+
+[wasm]
+path = "/app/ml_classifier.wasm"
+entrypoint = "predict"
+
+[[mount]]
+type = "stdio"
+name = "stdout"
+
+[[mount]]
+type = "stdio"
+name = "stderr"
+
+# Environment variables injected securely into the Keep
+[[env]]
+name = "CLASSIFIER_THRESHOLD"
+value = "0.85"

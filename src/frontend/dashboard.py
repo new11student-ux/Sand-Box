@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import asyncpg
 import os
+import json
 from datetime import datetime, timezone
 from typing import Optional
 from dotenv import load_dotenv
@@ -25,6 +26,7 @@ app = FastAPI(
 )
 
 templates = Jinja2Templates(directory="src/frontend/templates")
+templates.env.filters["fromjson"] = lambda s: json.loads(s) if isinstance(s, str) else s
 security = HTTPBearer()
 
 db_pool: Optional[asyncpg.Pool] = None
@@ -94,7 +96,7 @@ async def dashboard_home(request: Request):
             LIMIT 10
         """)
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request=request, name="dashboard.html", context={
         "request": request,
         "stats": dict(stats),
         "recent_samples": [dict(s) for s in recent_samples],
@@ -175,7 +177,7 @@ async def samples_list(
 
         samples = await conn.fetch(query, *params)
 
-    return templates.TemplateResponse("samples.html", {
+    return templates.TemplateResponse(request=request, name="samples.html", context={
         "request": request,
         "samples": [dict(s) for s in samples],
         "status_filter": status_filter,
@@ -206,11 +208,28 @@ async def sample_detail(request: Request, sample_id: str):
             WHERE sample_id = $1
         """, sample_id)
 
-    return templates.TemplateResponse("sample_detail.html", {
+        # Phase 2: Fetch eBPF events
+        ebpf_events = await conn.fetch("""
+            SELECT * FROM ebpf_events
+            WHERE sample_id = $1
+            ORDER BY timestamp DESC
+            LIMIT 100
+        """, sample_id)
+
+        # Phase 2: Fetch Falco alerts
+        falco_alerts = await conn.fetch("""
+            SELECT * FROM falco_alerts
+            WHERE sample_id = $1
+            ORDER BY timestamp DESC
+        """, sample_id)
+
+    return templates.TemplateResponse(request=request, name="sample_detail.html", context={
         "request": request,
         "sample": dict(sample),
         "behaviors": [dict(b) for b in behaviors],
-        "iocs": [dict(i) for i in iocs]
+        "iocs": [dict(i) for i in iocs],
+        "ebpf_events": [dict(e) for e in ebpf_events],
+        "falco_alerts": [dict(a) for a in falco_alerts]
     })
 
 
@@ -230,7 +249,7 @@ async def iocs_list(request: Request, ioc_type: Optional[str] = None):
         else:
             iocs = await conn.fetch(query)
 
-    return templates.TemplateResponse("iocs.html", {
+    return templates.TemplateResponse(request=request, name="iocs.html", context={
         "request": request,
         "iocs": [dict(i) for i in iocs],
         "ioc_type_filter": ioc_type
@@ -244,11 +263,72 @@ async def mitre_attack_view(request: Request):
     async with pool.acquire() as conn:
         coverage = await conn.fetch("SELECT * FROM v_mitre_attack_coverage")
 
-    return templates.TemplateResponse("mitre_attack.html", {
+    return templates.TemplateResponse(request=request, name="mitre_attack.html", context={
         "request": request,
         "coverage": [dict(c) for c in coverage]
     })
 
+
+@app.get("/ai-sandbox")
+async def ai_sandbox_view(request: Request):
+    """Phase 3: AI Agent Sandboxing View."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        # Fetch execution logs from audit_log
+        executions = await conn.fetch("""
+            SELECT id, user_id, action, details, status, timestamp
+            FROM audit_log
+            WHERE action = 'ai_sandbox_execution'
+            ORDER BY timestamp DESC
+            LIMIT 50
+        """)
+
+    return templates.TemplateResponse(request=request, name="ai_sandbox.html", context={
+        "request": request,
+        "executions": [dict(e) for e in executions]
+    })
+
+
+@app.get("/isolation")
+async def isolation_view(request: Request):
+    """Phase 4: Remote Browser Isolation & Sanitization View."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        # Fetch rbi sessions
+        rbi_logs = await conn.fetch("""
+            SELECT id, action, details, status, timestamp
+            FROM audit_log
+            WHERE action = 'rbi_session_created'
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """)
+        # Fetch sanitization logs
+        sanitization_logs = await conn.fetch("""
+            SELECT id, action, details, status, timestamp
+            FROM audit_log
+            WHERE action = 'document_sanitized'
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """)
+
+    return templates.TemplateResponse(request=request, name="isolation.html", context={
+        "request": request,
+        "rbi_logs": [dict(r) for r in rbi_logs],
+        "sanitization_logs": [dict(s) for s in sanitization_logs]
+    })
+
+
+@app.get("/advanced")
+async def advanced_view(request: Request):
+    """Phase 5: Advanced Features View (DRAKVUF, Cowrie, MITRE)."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        # We simulate fetching the map data and drakvuf jobs
+        pass
+
+    return templates.TemplateResponse(request=request, name="advanced.html", context={
+        "request": request
+    })
 
 @app.on_event("startup")
 async def startup():

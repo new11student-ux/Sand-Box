@@ -1,4 +1,4 @@
--- Advanced Cybersecurity Sandbox Platform
+﻿-- Advanced Cybersecurity Sandbox Platform
 -- PostgreSQL Database Schema
 -- Version: 1.0.0
 
@@ -42,7 +42,9 @@ CREATE TABLE samples (
     ml_score DECIMAL(5, 4),
 
     -- Storage
-    storage_path TEXT NOT NULL,
+    storage_path TEXT,
+    encrypted_payload BYTEA,
+    encryption_key_id TEXT,
     encrypted BOOLEAN DEFAULT TRUE,
 
     -- Indexes
@@ -720,3 +722,49 @@ INSERT INTO sandboxes (name, sandbox_type, os_type, os_version, architecture, ca
  '["code_execution", "ephemeral", "network_restricted"]'::jsonb, 'offline'),
 ('kasm-browser', 'kasm', 'linux', 'ubuntu-22.04', 'x86_64',
  '["browser_isolation", "document_viewing", "network_restricted"]'::jsonb, 'offline');
+
+-- ============================================================================
+-- DRAKVUF ANALYSIS TABLE (Phase 5)
+-- ============================================================================
+CREATE TABLE drakvuf_analysis (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sample_id UUID REFERENCES samples(id),
+    job_id TEXT UNIQUE NOT NULL,
+    status TEXT CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    memory_artifacts JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- ============================================================================
+-- MITRE TAGS TABLE (Phase 5)
+-- ============================================================================
+CREATE TABLE mitre_tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sample_id UUID REFERENCES samples(id),
+    technique_id TEXT NOT NULL,
+    tactic_id TEXT NOT NULL,
+    confidence FLOAT CHECK (confidence BETWEEN 0 AND 1),
+    tagger_version TEXT NOT NULL,
+    evidence_summary JSONB,
+    analyst_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(sample_id, technique_id, tagger_version)
+);
+
+-- ============================================================================
+-- HONEYPOT EVENTS TABLE (Phase 5)
+-- ============================================================================
+CREATE TABLE honeypot_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    cowrie_session_id TEXT,
+    attacker_ip INET,
+    event_type TEXT,
+    raw_event JSONB,
+    correlated_sample_id UUID REFERENCES samples(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_mitre_sample ON mitre_tags(sample_id);
+CREATE INDEX idx_mitre_technique ON mitre_tags(technique_id) WHERE confidence > 0.7;
+CREATE INDEX idx_honeypot_ip ON honeypot_events(attacker_ip);

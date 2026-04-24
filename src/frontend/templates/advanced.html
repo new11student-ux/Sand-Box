@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Features - Sandbox Platform</title>
+    <style>
+        :root { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --bg-card: #0f3460; --text-primary: #eee; --text-secondary: #aaa; --accent: #e94560; --success: #4ade80; --warning: #fbbf24; --danger: #ef4444; --info: #3b82f6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-links a.active { color: var(--accent); font-weight: 600; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .header { margin-bottom: 2rem; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+        .grid-full { grid-column: span 2; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; }
+        .card-title { font-size: 1.2rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bg-secondary); display: flex; justify-content: space-between; align-items: center;}
+        
+        .btn { padding: 0.8rem 1.5rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.3s; color: white; background: var(--info); }
+        .btn:hover { background: #2563eb; }
+        
+        .status-badge { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+        
+        .mitre-matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+        .mitre-tactic { background: var(--bg-secondary); padding: 0.5rem; text-align: center; font-weight: bold; font-size: 0.85rem; border-radius: 4px; }
+        .mitre-tech { background: rgba(59, 130, 246, 0.1); border: 1px solid var(--info); padding: 0.5rem; font-size: 0.8rem; border-radius: 4px; cursor: pointer; transition: all 0.2s;}
+        .mitre-tech:hover { background: rgba(59, 130, 246, 0.3); }
+        .mitre-tech.high-conf { border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
+        
+        .map-placeholder { height: 300px; background: #000; border-radius: 8px; border: 2px solid var(--bg-secondary); display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--text-secondary); position: relative; overflow: hidden; }
+        .map-dot { position: absolute; width: 6px; height: 6px; background: var(--danger); border-radius: 50%; box-shadow: 0 0 8px var(--danger); }
+        
+        .log-box { background: #0b1a30; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; color: #a5b4fc; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+            <a href="/ai-sandbox">AI Sandbox</a>
+            <a href="/isolation">Isolation</a>
+            <a href="/advanced" class="active">Advanced</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h2>🚀 Advanced Features</h2>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                DRAKVUF Introspection, Cowrie Honeypot, and MITRE Automated Tagging
+            </p>
+        </div>
+
+        <div class="grid">
+            <!-- DRAKVUF Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>🧠 DRAKVUF Hypervisor Introspection</span>
+                    <span style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.2rem 0.6rem; border-radius: 12px;">Agentless Analysis</span>
+                </div>
+                <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                    <input type="text" id="drakvufSampleId" placeholder="Enter Sample ID or Hash..." style="flex: 1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--bg-secondary); background: var(--bg-primary); color: white;">
+                    <button class="btn" onclick="submitDrakvuf()">Submit to DRAKVUF</button>
+                </div>
+                
+                <div id="drakvufStatus" style="display: none; margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--warning);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong id="drakvufJobId">Job: ...</strong>
+                        <span id="drakvufBadge" class="status-badge" style="background: var(--warning); color: black;">PENDING</span>
+                    </div>
+                    <p id="drakvufText" style="font-size: 0.85rem; color: var(--text-secondary);">Waiting for hypervisor allocation...</p>
+                </div>
+                
+                <div id="drakvufResults" style="display: none;">
+                    <h4 style="margin-bottom: 0.5rem; font-size: 0.9rem;">Memory Artifacts Found:</h4>
+                    <div class="log-box" id="drakvufLog"></div>
+                </div>
+            </div>
+
+            <!-- Cowrie Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>🍯 Cowrie Honeypot Ingestion</span>
+                    <span style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.2rem 0.6rem; border-radius: 12px;">Live Webhook</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Live visualization of SSH/Telnet attacks hitting the Cowrie honeypot.
+                </p>
+                <div class="map-placeholder" id="worldMap">
+                    <div style="font-size: 3rem; opacity: 0.2; position: absolute; z-index: 0;">🗺️ World Map</div>
+                </div>
+                <div style="margin-top: 1rem; display: flex; justify-content: center;">
+                    <button class="btn" style="background: var(--accent);" onclick="simulateHoneypotHit()">Simulate Webhook Event</button>
+                </div>
+            </div>
+
+            <!-- MITRE Tagger Card -->
+            <div class="card grid-full">
+                <div class="card-title">
+                    <span>🎯 MITRE ATT&CK Automated Tagging</span>
+                    <span style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.2rem 0.6rem; border-radius: 12px;">Heuristic Engine</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Behaviors and memory artifacts are automatically mapped to MITRE ATT&CK techniques using the <code>src/config/mitre_rules.yaml</code> heuristic engine.
+                </p>
+                
+                <div class="mitre-matrix">
+                    <!-- Column 1 -->
+                    <div>
+                        <div class="mitre-tactic">Execution (TA0002)</div>
+                        <div class="mitre-tech" style="margin-top: 0.5rem;" id="tech-t1059">T1059 Command and Scripting Interpreter</div>
+                        <div class="mitre-tech high-conf" style="margin-top: 0.5rem; display: none;" id="tech-t1059-001">
+                            T1059.001 PowerShell
+                            <div style="font-size: 0.7rem; color: var(--danger); margin-top: 0.2rem;">Confidence: 0.85</div>
+                        </div>
+                    </div>
+                    <!-- Column 2 -->
+                    <div>
+                        <div class="mitre-tactic">Defense Evasion (TA0005)</div>
+                        <div class="mitre-tech high-conf" style="margin-top: 0.5rem; display: none;" id="tech-t1055-012">
+                            T1055.012 Process Hollowing
+                            <div style="font-size: 0.7rem; color: var(--danger); margin-top: 0.2rem;">Confidence: 0.95</div>
+                        </div>
+                    </div>
+                    <!-- Column 3 -->
+                    <div>
+                        <div class="mitre-tactic">Command and Control (TA0011)</div>
+                        <div class="mitre-tech high-conf" style="margin-top: 0.5rem; display: none;" id="tech-t1105">
+                            T1105 Ingress Tool Transfer
+                            <div style="font-size: 0.7rem; color: var(--danger); margin-top: 0.2rem;">Confidence: 0.75</div>
+                        </div>
+                    </div>
+                    <!-- Column 4 -->
+                    <div>
+                        <div class="mitre-tactic">Exfiltration (TA0010)</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 1rem; display: flex; justify-content: flex-end;">
+                    <button class="btn" onclick="triggerTagging()">Run MITRE Engine on Sample</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DRAKVUF polling simulation
+        async function submitDrakvuf() {
+            const sid = document.getElementById('drakvufSampleId').value || 'demo-hash';
+            const statusDiv = document.getElementById('drakvufStatus');
+            const badge = document.getElementById('drakvufBadge');
+            const text = document.getElementById('drakvufText');
+            const resDiv = document.getElementById('drakvufResults');
+            const logBox = document.getElementById('drakvufLog');
+            
+            // 1. Submit
+            const res = await fetch(`/api/v1/advanced/drakvuf/submit?sample_id=${sid}`, {method: 'POST'});
+            const data = await res.json();
+            
+            statusDiv.style.display = 'block';
+            resDiv.style.display = 'none';
+            document.getElementById('drakvufJobId').innerText = `Job: ${data.job_id}`;
+            badge.innerText = 'PENDING';
+            badge.style.background = 'var(--warning)';
+            badge.style.color = 'black';
+            text.innerText = 'Allocating Xen hypervisor domain...';
+            
+            // 2. Poll
+            const poll = setInterval(async () => {
+                const pRes = await fetch(`/api/v1/advanced/drakvuf/${data.job_id}`);
+                const pData = await pRes.json();
+                
+                if (pData.status === 'running') {
+                    badge.innerText = 'RUNNING';
+                    badge.style.background = 'var(--info)';
+                    badge.style.color = 'white';
+                    text.innerText = 'Introspecting VMI syscalls and memory...';
+                } else if (pData.status === 'completed') {
+                    clearInterval(poll);
+                    badge.innerText = 'COMPLETED';
+                    badge.style.background = 'var(--success)';
+                    badge.style.color = 'black';
+                    text.innerText = 'Analysis finished.';
+                    
+                    resDiv.style.display = 'block';
+                    logBox.innerHTML = JSON.stringify(pData.memory_dumps, null, 2) + '\n\n' + JSON.stringify(pData.syscall_trace, null, 2);
+                }
+            }, 1500);
+        }
+
+        // Cowrie map simulation
+        function simulateHoneypotHit() {
+            const map = document.getElementById('worldMap');
+            const dot = document.createElement('div');
+            dot.className = 'map-dot';
+            dot.style.left = Math.random() * 90 + 5 + '%';
+            dot.style.top = Math.random() * 90 + 5 + '%';
+            map.appendChild(dot);
+            
+            // Fade out after a few seconds
+            setTimeout(() => { dot.style.opacity = '0'; }, 2000);
+            setTimeout(() => { dot.remove(); }, 3000);
+            
+            // Also hit the webhook API
+            fetch('/api/v1/advanced/cowrie/webhook', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Cowrie-Token': 'dev_token_123'
+                },
+                body: JSON.stringify({
+                    eventid: 'cowrie.session.file_download',
+                    src_ip: '192.168.1.' + Math.floor(Math.random()*255),
+                    session: 'sim_session',
+                    shasum: 'a1b2c3d4e5f6',
+                    url: 'http://malicious.com/payload.sh'
+                })
+            });
+        }
+
+        // MITRE Tagging Trigger
+        async function triggerTagging() {
+            const res = await fetch('/api/v1/advanced/mitre/tag?sample_id=demo', {method: 'POST'});
+            const data = await res.json();
+            
+            // Reveal the tags in UI
+            document.getElementById('tech-t1059-001').style.display = 'block';
+            document.getElementById('tech-t1055-012').style.display = 'block';
+            document.getElementById('tech-t1105').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

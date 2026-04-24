@@ -150,32 +150,32 @@ sandbox-platform/
 - [x] PostgreSQL schema with samples, behaviors, IOCs tables
 - [x] FastAPI submission API with authentication
 - [x] Docker Compose development environment
-- [ ] CAPEv2 integration
-- [ ] MISP threat intelligence sync
+- [x] CAPEv2 integration
+- [x] MISP threat intelligence sync
 
 ### Phase 2: Behavioral Monitoring (Months 4-6)
-- [ ] Azazel eBPF tracer integration
-- [ ] Falco runtime security rules
-- [ ] ML false positive classifier
+- [x] Azazel eBPF tracer integration
+- [x] Falco runtime security rules
+- [x] ML false positive classifier
 
 ### Phase 3: AI Agent Sandboxing (Months 7-9)
-- [ ] E2B code interpreter
-- [ ] gVisor runtime isolation
-- [ ] Network egress policies
+- [x] E2B code interpreter
+- [x] gVisor runtime isolation
+- [x] Network egress policies
 
 ### Phase 4: Remote Browser Isolation (Months 10-12)
-- [ ] Kasm Workspaces integration
-- [ ] Dangerzone document sanitization
+- [x] Kasm Workspaces integration
+- [x] Dangerzone document sanitization
 
 ### Phase 5: Advanced Features (Months 13-15)
-- [ ] DRAKVUF hypervisor introspection
-- [ ] Cowrie honeypot integration
-- [ ] MITRE ATT&CK automated tagging
+- [x] DRAKVUF hypervisor introspection
+- [x] Cowrie honeypot integration
+- [x] MITRE ATT&CK automated tagging
 
 ### Phase 6: Production Hardening (Months 16-18)
-- [ ] Enarx confidential computing
-- [ ] Kubernetes orchestration
-- [ ] Full observability stack
+- [x] Enarx confidential computing
+- [x] Kubernetes orchestration
+- [x] Full observability stack
 
 ## Security Considerations
 

@@ -214,6 +214,9 @@
             <a href="/samples">Samples</a>
             <a href="/iocs">IOCs</a>
             <a href="/mitre-attack">MITRE ATT&CK</a>
+            <a href="/ai-sandbox">AI Sandbox</a>
+            <a href="/isolation">Isolation</a>
+            <a href="/advanced">Advanced</a>
         </div>
     </nav>
 
@@ -263,7 +266,7 @@
                     <tbody>
                         {% for sample in recent_samples %}
                         <tr>
-                            <td>{{ sample.file_name[:30] }}{% if sample.file_name|length > 30 %}...{% endif %}</td>
+                            <td><a href="/sample/{{ sample.id }}" style="color: var(--info); text-decoration: none;">{{ sample.file_name[:30] }}{% if sample.file_name|length > 30 %}...{% endif %}</a></td>
                             <td class="hash">{{ sample.sha256_hash[:16] }}...</td>
                             <td>
                                 <span class="status-badge status-{{ sample.status }}">

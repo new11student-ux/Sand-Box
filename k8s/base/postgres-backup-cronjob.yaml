@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              pg_dump -h sandbox-postgres -U sandbox sandbox_db | gzip > /backups/sandbox-$(date +%F).sql.gz
+            env:
+            - name: PGPASSWORD
+              value: sandbox
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - ALL
+              runAsNonRoot: true
+          volumes:
+          - name: backup-storage
+            emptyDir: {} # Replace with actual PVC in production
+          restartPolicy: OnFailure

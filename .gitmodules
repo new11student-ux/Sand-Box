@@ -1,0 +1,24 @@
+[submodule "vendor/CAPEv2"]
+	path = vendor/CAPEv2
+	url = https://github.com/kevoreilly/CAPEv2
+[submodule "vendor/MISP"]
+	path = vendor/MISP
+	url = https://github.com/MISP/MISP
+[submodule "vendor/e2b"]
+	path = vendor/e2b
+	url = https://github.com/e2b-dev/E2B
+[submodule "vendor/gvisor"]
+	path = vendor/gvisor
+	url = https://github.com/google/gvisor
+[submodule "vendor/dangerzone"]
+	path = vendor/dangerzone
+	url = https://github.com/freedomofpress/dangerzone
+[submodule "vendor/drakvuf"]
+	path = vendor/drakvuf
+	url = https://github.com/tklengyel/drakvuf
+[submodule "vendor/cowrie"]
+	path = vendor/cowrie
+	url = https://github.com/cowrie/cowrie
+[submodule "vendor/enarx"]
+	path = vendor/enarx
+	url = https://github.com/enarx/enarx

@@ -1,0 +1,59 @@
+version: '3.8'
+
+# Advanced Cybersecurity Sandbox Platform - Phase 3
+# AI Agent Sandboxing with gVisor (runsc)
+
+# IMPORTANT: To use this file, your Docker daemon must be configured with the 'runsc' runtime.
+# On Linux, install gVisor and add to /etc/docker/daemon.json:
+# {
+#     "runtimes": {
+#         "runsc": {
+#             "path": "/usr/local/bin/runsc"
+#         }
+#     }
+# }
+
+services:
+  # The AI Sandbox Worker node (isolated with gVisor)
+  ai_sandbox_worker:
+    build: 
+      context: ../
+      dockerfile: docker/Dockerfile.worker
+    image: sandbox-platform/worker:latest
+    container_name: sandbox_agent_worker
+    runtime: runsc  # Enable gVisor user-space kernel isolation
+    security_opt:
+      - no-new-privileges:true
+    # Drop all capabilities except those strictly needed
+    cap_drop:
+      - ALL
+    networks:
+      - ai_sandbox_net
+    volumes:
+      - sandbox_agent_storage:/app/storage
+    environment:
+      - E2B_MODE=local
+      - REDIS_URL=redis://sandbox_redis:6379/0
+      - NETWORK_ACCESS=restricted
+
+  # Local simulated E2B environment (runs alongside worker)
+  simulated_e2b:
+    image: alpine:latest
+    container_name: simulated_e2b_env
+    runtime: runsc
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - ai_sandbox_net
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    cpus: 1.0
+
+networks:
+  # Isolated network for AI agents with strict egress filtering
+  ai_sandbox_net:
+    driver: bridge
+    internal: true # Disables external internet access by default, must be managed via IPTables/Egress Policies
+
+volumes:
+  sandbox_agent_storage:

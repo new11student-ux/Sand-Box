@@ -1,0 +1,45 @@
+# docker-compose.dev.yml
+# Minimal development setup: PostgreSQL + Platform
+# Usage: docker compose -f docker-compose.dev.yml up --build
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sandbox-postgres
+    environment:
+      POSTGRES_DB: sandbox_db
+      POSTGRES_USER: sandbox
+      POSTGRES_PASSWORD: sandbox_dev_password_change_me
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sandbox -d sandbox_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sandbox-platform
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://sandbox:sandbox_dev_password_change_me@postgres:5432/sandbox_db
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - sample_storage:/storage/samples
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  sample_storage:

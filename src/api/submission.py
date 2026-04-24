@@ -5,23 +5,69 @@ Sample Submission API - REST endpoints for malware sample submission and status 
 
 import os
 import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header, Query, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header, Query, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import asyncpg
 from dotenv import load_dotenv
 
+# AI Sandbox imports
+from src.ai_sandbox.schemas import SandboxExecutionRequest, SandboxExecutionResult
+from src.ai_sandbox.e2b_manager import get_e2b_manager
+from src.ai_sandbox.network_policies import generate_egress_policy
+
+# Isolation imports
+from src.isolation.schemas import RBISessionRequest, RBISessionResponse, SanitizationRequest, SanitizationResponse
+from src.isolation.kasm_client import get_kasm_client
+from src.isolation.dangerzone import get_dangerzone_manager
+
+# Advanced imports
+from src.advanced.schemas import CowrieEvent
+from src.advanced.drakvuf_client import get_drakvuf_client
+from src.advanced.cowrie_parser import CowrieParser
+from src.advanced.mitre_tagger import MitreTagger
+
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    from prometheus_client import Counter, Histogram
+except ImportError:
+    Instrumentator = None
+    Counter = None
+    Histogram = None
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Custom Business Metrics (Only if prometheus_client is installed)
+if Counter and Histogram:
+    malware_detected = Counter(
+        'sandbox_malware_detected_total',
+        'Total malware detections',
+        ['severity', 'technique']
+    )
+
+    analysis_duration = Histogram(
+        'sandbox_analysis_duration_seconds',
+        'Time spent analyzing samples',
+        ['sample_type', 'worker_type']
+    )
+else:
+    malware_detected = None
+    analysis_duration = None
+
+def record_malware_detection(severity: str, technique: str):
+    if malware_detected:
+        malware_detected.labels(severity=severity, technique=technique).inc()
 
 # ============================================================================
 # Configuration
@@ -45,6 +91,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Instrument FastAPI with Prometheus
+if Instrumentator:
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
 
 # ============================================================================
 # Database Connection Pool
@@ -220,7 +271,7 @@ async def health_check():
     }
 
 
-@app.post("/api/v1/samples", response_model=SampleSubmissionResponse)
+@app.post("/samples", response_model=SampleSubmissionResponse)
 async def submit_sample(
     file: UploadFile = File(..., description="Sample file to analyze"),
     priority: int = Query(5, ge=1, le=10, description="Analysis priority (1-10)"),
@@ -324,7 +375,7 @@ async def submit_sample(
     )
 
 
-@app.get("/api/v1/samples/{sample_id}", response_model=SampleStatusResponse)
+@app.get("/samples/{sample_id}", response_model=SampleStatusResponse)
 async def get_sample_status(
     sample_id: UUID,
     user: dict = Depends(verify_api_key)
@@ -367,7 +418,7 @@ async def get_sample_status(
         )
 
 
-@app.get("/api/v1/samples/{sample_id}/report", response_model=AnalysisResult)
+@app.get("/samples/{sample_id}/report", response_model=AnalysisResult)
 async def get_analysis_report(
     sample_id: UUID,
     user: dict = Depends(verify_api_key)
@@ -444,7 +495,7 @@ async def get_analysis_report(
         )
 
 
-@app.get("/api/v1/queue/status", response_model=QueueStatusResponse)
+@app.get("/queue/status", response_model=QueueStatusResponse)
 async def get_queue_status(user: dict = Depends(verify_api_key)):
     """Get current submission queue status."""
     pool = await get_db_pool()
@@ -470,7 +521,7 @@ async def get_queue_status(user: dict = Depends(verify_api_key)):
         )
 
 
-@app.get("/api/v1/iocs", response_model=List[dict])
+@app.get("/iocs", response_model=List[dict])
 async def search_iocs(
     ioc_type: Optional[str] = Query(None, description="Filter by IOC type"),
     value: Optional[str] = Query(None, description="Search IOC value"),
@@ -512,7 +563,7 @@ async def search_iocs(
         return [dict(row) for row in rows]
 
 
-@app.get("/api/v1/mitre-attack")
+@app.get("/mitre-attack")
 async def get_mitre_attack_coverage(user: dict = Depends(verify_api_key)):
     """Get MITRE ATT&CK technique coverage from analyzed samples."""
     pool = await get_db_pool()
@@ -521,7 +572,7 @@ async def get_mitre_attack_coverage(user: dict = Depends(verify_api_key)):
         return [dict(row) for row in rows]
 
 
-@app.delete("/api/v1/samples/{sample_id}")
+@app.delete("/samples/{sample_id}")
 async def delete_sample(
     sample_id: UUID,
     user: dict = Depends(verify_api_key)
@@ -570,7 +621,7 @@ async def delete_sample(
     return {"message": "Sample deleted successfully", "sample_id": str(sample_id)}
 
 
-@app.post("/api/v1/samples/batch")
+@app.post("/samples/batch")
 async def batch_submit_samples(
     files: List[UploadFile] = File(..., description="Sample files to analyze"),
     priority: int = Query(5, ge=1, le=10, description="Analysis priority"),
@@ -683,7 +734,7 @@ async def batch_submit_samples(
     }
 
 
-@app.delete("/api/v1/queue/{queue_id}")
+@app.delete("/queue/{queue_id}")
 async def cancel_queue_item(
     queue_id: UUID,
     user: dict = Depends(verify_api_key)
@@ -743,7 +794,7 @@ async def cancel_queue_item(
     }
 
 
-@app.get("/api/v1/samples")
+@app.get("/samples")
 async def list_samples(
     request: Request,
     status_filter: Optional[str] = Query(None, description="Filter by status"),
@@ -813,6 +864,177 @@ async def list_samples(
             "has_more": offset + len(rows) < total
         }
 
+
+# ============================================================================
+# PHASE 3: AI AGENT SANDBOX ENDPOINTS
+# ============================================================================
+
+@app.post("/ai-sandbox/execute", response_model=SandboxExecutionResult)
+async def execute_agent_code(
+    request: SandboxExecutionRequest,
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Execute AI agent code in an ephemeral sandbox.
+    Phase 3: E2B / gVisor Integration
+    """
+    # Initialize the sandbox manager
+    mode = os.getenv("E2B_MODE", "simulated")
+    manager = get_e2b_manager(mode=mode)
+    
+    # Generate and log the egress policy that WOULD be applied
+    egress_policy = generate_egress_policy(request.network_access, request.allowed_domains)
+    # (In a production environment with gVisor/Docker, we'd apply this policy here)
+    
+    # Execute the code
+    result = await manager.execute(request)
+    
+    # Log the execution in the database for auditing
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO audit_log (user_id, action, resource_type, details, status)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            user.get("id"),
+            "ai_sandbox_execution",
+            "execution",
+            json.dumps({
+                "language": request.language,
+                "execution_id": result.execution_id,
+                "execution_time_ms": result.execution_time_ms,
+                "status": result.status
+            }),
+            result.status
+        )
+
+    return result
+
+# ============================================================================
+# PHASE 4: REMOTE BROWSER ISOLATION ENDPOINTS
+# ============================================================================
+
+@app.post("/isolation/browser", response_model=RBISessionResponse)
+async def create_browser_session(
+    request: RBISessionRequest,
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Create a new containerized Remote Browser Isolation session via Kasm.
+    Phase 4: Kasm Workspaces Integration
+    """
+    mode = os.getenv("KASM_MODE", "simulated")
+    client = get_kasm_client(mode=mode)
+    result = await client.create_session(request)
+    
+    # Log session creation
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO audit_log (user_id, action, resource_type, details, status)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            user.get("id"),
+            "rbi_session_created",
+            "kasm_session",
+            json.dumps({"url": request.url, "session_id": result.session_id}),
+            result.status
+        )
+        
+    return result
+
+@app.post("/isolation/sanitize", response_model=SanitizationResponse)
+async def sanitize_document(
+    file: UploadFile = File(..., description="Document to sanitize"),
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Sanitize a document by converting it to safe pixels and back to PDF.
+    Phase 4: Dangerzone Integration
+    """
+    file_content = await file.read()
+    file_size = len(file_content)
+    
+    if file_size > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large for sanitization (max 50MB)")
+        
+    mode = os.getenv("DANGERZONE_MODE", "simulated")
+    manager = get_dangerzone_manager(mode=mode)
+    req = SanitizationRequest(file_name=file.filename, file_size=file_size)
+    result = await manager.sanitize_document(file_content, req)
+    
+    # Log document sanitization
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO audit_log (user_id, action, resource_type, details, status)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            user.get("id"),
+            "document_sanitized",
+            "dangerzone_task",
+            json.dumps({"file_name": file.filename, "task_id": result.task_id}),
+            result.status
+        )
+        
+    return result
+
+# ============================================================================
+# PHASE 5: ADVANCED FEATURES ENDPOINTS
+# ============================================================================
+
+@app.post("/advanced/drakvuf/submit")
+async def submit_to_drakvuf(
+    sample_id: str = Query(..., description="Sample Hash/ID to submit"),
+    user: dict = Depends(verify_api_key)
+):
+    """Submit a sample for DRAKVUF hypervisor introspection."""
+    mode = os.getenv("DRAKVUF_MODE", "simulated")
+    client = get_drakvuf_client(mode=mode)
+    job = await client.submit_sample(sample_id)
+    return job
+
+@app.get("/advanced/drakvuf/{job_id}")
+async def get_drakvuf_status(job_id: str, user: dict = Depends(verify_api_key)):
+    """Poll status of a DRAKVUF job."""
+    mode = os.getenv("DRAKVUF_MODE", "simulated")
+    client = get_drakvuf_client(mode=mode)
+    report = await client.get_results(job_id)
+    return report
+
+@app.post("/advanced/cowrie/webhook", status_code=status.HTTP_202_ACCEPTED)
+async def cowrie_webhook(
+    event: CowrieEvent,
+    x_cowrie_token: str = Header(None)
+):
+    """Ingest events from Cowrie honeypot."""
+    expected_token = os.getenv("COWRIE_WEBHOOK_TOKEN", "dev_token_123")
+    if x_cowrie_token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid webhook token")
+        
+    parser = CowrieParser()
+    parsed = parser.parse_event(event)
+    
+    # In a real system, we'd enqueue this to Celery and save to DB
+    return {"status": "accepted", "event_type": parsed.event_type}
+
+@app.post("/advanced/mitre/tag")
+async def trigger_mitre_tagging(
+    sample_id: str = Query(..., description="Sample ID to tag"),
+    user: dict = Depends(verify_api_key)
+):
+    """Manually trigger MITRE ATT&CK tagging for a sample's behaviors."""
+    tagger = MitreTagger()
+    # Mock behaviors for testing
+    mock_behaviors = [
+        {"syscall": "CreateProcess", "process": "powershell.exe", "parent_process": "cmd.exe"},
+        {"syscall": "open", "path": "payload.exe"}
+    ]
+    tags = tagger.analyze(mock_behaviors)
+    return {"sample_id": sample_id, "tags": [t.model_dump() for t in tags]}
 
 # ============================================================================
 # Startup/Shutdown Events

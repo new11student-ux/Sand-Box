@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isolation - Sandbox Platform</title>
+    <style>
+        :root { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --bg-card: #0f3460; --text-primary: #eee; --text-secondary: #aaa; --accent: #e94560; --success: #4ade80; --warning: #fbbf24; --danger: #ef4444; --info: #3b82f6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .navbar { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card); }
+        .navbar h1 { font-size: 1.5rem; color: var(--accent); }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; margin-left: 1.5rem; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-links a.active { color: var(--accent); font-weight: 600; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        .header h2 { font-size: 1.8rem; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; }
+        .card-title { font-size: 1.2rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bg-secondary); display: flex; justify-content: space-between; align-items: center;}
+        
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem; }
+        .form-input { width: 100%; padding: 0.8rem; background: var(--bg-secondary); border: 1px solid #2a4365; border-radius: 6px; color: white; font-size: 1rem; }
+        .btn { padding: 0.8rem 1.5rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.3s; width: 100%; font-size: 1rem;}
+        .btn-primary { background: var(--info); color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-danger { background: var(--accent); color: white; }
+        
+        .browser-container { background: #000; border-radius: 8px; border: 2px solid var(--bg-secondary); height: 400px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;}
+        .browser-iframe { width: 100%; height: 100%; border: none; display: none; }
+        .browser-placeholder { color: var(--text-secondary); text-align: center; }
+        
+        .upload-area { border: 2px dashed var(--info); border-radius: 8px; padding: 3rem 2rem; text-align: center; background: rgba(59, 130, 246, 0.05); cursor: pointer; transition: all 0.3s; margin-bottom: 1rem;}
+        .upload-area:hover { background: rgba(59, 130, 246, 0.1); border-color: #60a5fa; }
+        .upload-icon { font-size: 3rem; margin-bottom: 1rem; color: var(--info); }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid var(--bg-secondary); font-size: 0.9rem; }
+        th { color: var(--text-secondary); font-weight: 600; text-transform: uppercase; font-size: 0.8rem; }
+        .status-badge { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+        .status-active { background: var(--success); color: #000; }
+        .status-safe { background: var(--success); color: #000; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>🛡️ Sandbox Platform</h1>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/samples">Samples</a>
+            <a href="/iocs">IOCs</a>
+            <a href="/mitre-attack">MITRE ATT&CK</a>
+            <a href="/ai-sandbox">AI Sandbox</a>
+            <a href="/isolation" class="active">Isolation</a>
+            <a href="/advanced">Advanced</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <h2>🔒 Remote Browser Isolation & Sanitization</h2>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                    Safely interact with suspicious URLs and documents via Kasm & Dangerzone.
+                </p>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- RBI Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>🌐 Remote Browser Isolation</span>
+                    <span style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.2rem 0.6rem; border-radius: 12px;">Powered by Kasm</span>
+                </div>
+                
+                <div class="form-group">
+                    <label>Target URL to Investigate</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="urlInput" class="form-input" placeholder="https://suspicious-site.com">
+                        <button onclick="launchBrowser()" class="btn btn-danger" style="width: auto; white-space: nowrap;">Launch Safe Browser</button>
+                    </div>
+                </div>
+
+                <div class="browser-container" id="browserContainer">
+                    <div class="browser-placeholder" id="browserPlaceholder">
+                        <div style="font-size: 2rem; margin-bottom: 1rem;">🖥️</div>
+                        <p>No active session.</p>
+                        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Enter a URL above to launch an isolated, disposable browser container.</p>
+                    </div>
+                    <iframe id="browserIframe" class="browser-iframe"></iframe>
+                </div>
+                
+                <div style="margin-top: 1.5rem;">
+                    <h4 style="color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.9rem;">Recent RBI Sessions</h4>
+                    {% if rbi_logs %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Target URL</th>
+                                <th>Status</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in rbi_logs %}
+                            {% set details = log.details|fromjson %}
+                            <tr>
+                                <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ details.url }}">{{ details.url }}</td>
+                                <td><span class="status-badge status-{{ log.status }}">{{ log.status }}</span></td>
+                                <td style="color: var(--text-secondary);">{{ log.timestamp.strftime('%H:%M:%S') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p style="font-size: 0.8rem; color: var(--text-secondary);">No recent sessions.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Sanitization Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>📄 Document Sanitization</span>
+                    <span style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.2rem 0.6rem; border-radius: 12px;">Powered by Dangerzone</span>
+                </div>
+                
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.5;">
+                    Upload potentially malicious documents (PDF, Word, Excel). The document will be converted to safe pixels within an isolated container and reconstructed into a safe PDF without any active content, macros, or exploits.
+                </p>
+
+                <div class="upload-area" id="dropArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">📁</div>
+                    <h3 style="margin-bottom: 0.5rem;">Click or drag document to sanitize</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary);">Supports PDF, DOCX, XLSX, PPTX (Max 50MB)</p>
+                    <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload(this.files[0])">
+                </div>
+                
+                <div id="sanitizationStatus" style="display: none; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-radius: 6px; border-left: 4px solid var(--info); margin-bottom: 1.5rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <strong id="sanFileName">document.pdf</strong>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem;" id="sanStatusText">Processing via isolated containers...</div>
+                        </div>
+                        <div class="status-badge" style="background: var(--info); color: white;" id="sanStatusBadge">PROCESSING</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 1.5rem;">
+                    <h4 style="color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.9rem;">Recent Sanitizations</h4>
+                    {% if sanitization_logs %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Status</th>
+                                <th>Time</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in sanitization_logs %}
+                            {% set details = log.details|fromjson %}
+                            <tr>
+                                <td style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ details.file_name }}">{{ details.file_name }}</td>
+                                <td><span class="status-badge status-{{ log.status }}">{{ log.status }}</span></td>
+                                <td style="color: var(--text-secondary);">{{ log.timestamp.strftime('%H:%M:%S') }}</td>
+                                <td>
+                                    <button class="btn btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.7rem; width: auto;">Download Safe PDF</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p style="font-size: 0.8rem; color: var(--text-secondary);">No recent sanitizations.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function launchBrowser() {
+            const url = document.getElementById('urlInput').value;
+            if(!url) return alert('Please enter a URL');
+            
+            const placeholder = document.getElementById('browserPlaceholder');
+            const iframe = document.getElementById('browserIframe');
+            
+            placeholder.innerHTML = '<div style="font-size: 2rem; margin-bottom: 1rem;">⏳</div><p>Provisioning isolated container...</p>';
+            
+            try {
+                const res = await fetch('/api/v1/isolation/browser', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url, browser_type: 'chromium', ttl_minutes: 15})
+                });
+                const data = await res.json();
+                
+                if (data.status === 'active' && data.cast_url) {
+                    placeholder.style.display = 'none';
+                    iframe.src = data.cast_url;
+                    iframe.style.display = 'block';
+                } else {
+                    placeholder.innerHTML = '<div style="font-size: 2rem; margin-bottom: 1rem;">✅</div><p>Session created: ' + data.session_id + '</p><p style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.5rem;">Cast URL: ' + (data.cast_url || 'N/A') + '</p>';
+                }
+            } catch(e) {
+                placeholder.innerHTML = '<div style="font-size: 2rem; margin-bottom: 1rem;">❌</div><p>Error: ' + e.message + '</p>';
+            }
+        }
+        
+        async function handleFileUpload(file) {
+            if(!file) return;
+            
+            const statusArea = document.getElementById('sanitizationStatus');
+            document.getElementById('sanFileName').innerText = file.name;
+            document.getElementById('sanStatusText').innerText = 'Converting document to safe pixels...';
+            document.getElementById('sanStatusBadge').innerText = 'PROCESSING';
+            document.getElementById('sanStatusBadge').style.background = 'var(--info)';
+            statusArea.style.display = 'block';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const res = await fetch('/api/v1/isolation/sanitize', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                document.getElementById('sanStatusText').innerText = 'Document sanitized. Task: ' + data.task_id;
+                document.getElementById('sanStatusBadge').innerText = data.status.toUpperCase();
+                document.getElementById('sanStatusBadge').style.background = 'var(--success)';
+                document.getElementById('sanStatusBadge').style.color = '#000';
+            } catch(e) {
+                document.getElementById('sanStatusText').innerText = 'Error: ' + e.message;
+                document.getElementById('sanStatusBadge').innerText = 'ERROR';
+                document.getElementById('sanStatusBadge').style.background = 'var(--danger)';
+            }
+        }
+        
+        // Drag and drop handlers
+        const dropArea = document.getElementById('dropArea');
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+        });
+        dropArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropArea.style.backgroundColor = 'rgba(59, 130, 246, 0.05)';
+        });
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.style.backgroundColor = 'rgba(59, 130, 246, 0.05)';
+            if(e.dataTransfer.files.length) {
+                handleFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# MITRE ATT&CK Heuristic Tagging Rules
+# Used by MitreTagger to automatically map behaviors to ATT&CK techniques
+
+- technique_id: "T1059.001"
+  name: "PowerShell Execution Chain"
+  tactic_id: "TA0002"
+  conditions:
+    - field: "syscall"
+      pattern: "CreateProcess"
+      process_name: "powershell.exe"
+    - field: "parent_process"
+      pattern: "(cmd\\.exe|winword\\.exe|excel\\.exe)"
+  confidence: 0.85
+  references:
+    - "https://attack.mitre.org/techniques/T1059/001/"
+
+- technique_id: "T1105"
+  name: "Ingress Tool Transfer"
+  tactic_id: "TA0011"
+  conditions:
+    - field: "syscall"
+      pattern: "(open|CreateFile)"
+      path_pattern: "\\.(exe|dll|sh|elf)$"
+    - field: "syscall"
+      pattern: "(connect|send|recv)"
+      direction: "outbound"
+  confidence: 0.75
+  references:
+    - "https://attack.mitre.org/techniques/T1105/"
+
+- technique_id: "T1055.012"
+  name: "Process Hollowing"
+  tactic_id: "TA0005"
+  conditions:
+    - field: "syscall"
+      pattern: "(NtUnmapViewOfSection|NtAllocateVirtualMemory|NtWriteVirtualMemory|NtSetContextThread|NtResumeThread)"
+      sequence: true
+  confidence: 0.95
+  references:
+    - "https://attack.mitre.org/techniques/T1055/012/"
